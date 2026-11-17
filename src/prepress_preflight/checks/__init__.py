@@ -13,6 +13,8 @@ from .total_ink import TotalInkCheck
 from .resolution import ImageResolutionCheck
 from .hairlines import HairlineCheck
 from .fonts import FontEmbeddingCheck
+from .trim_marks import TrimMarkCheck
+from .dielines import DielineCheck
 from .annotations import AnnotationCheck
 from .layers import LayerCheck
 from .security import SecurityCheck
@@ -32,6 +34,8 @@ ALL_CHECKS = [
     ImageResolutionCheck,
     HairlineCheck,
     FontEmbeddingCheck,
+    TrimMarkCheck,
+    DielineCheck,
     AnnotationCheck,
     LayerCheck,
     SecurityCheck,

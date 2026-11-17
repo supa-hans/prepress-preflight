@@ -21,6 +21,8 @@
 | Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
 | Font embedding | fail | A font used for visible text is not embedded |
+| Trim marks | warn | Crop marks point at a rectangle that differs from the trim box by more than 0.5 mm. A note when they agree |
+| Dielines | warn | A dieline (by spot name) is not set to overprint. Its size is reported as a note |
 | Annotations | warn | Annotations set to print (stamps, comments), or any form field. Links are ignored |
 | Annotations | note | Comments not set to print |
 | Layers | warn | Any layer switched off. Visible layers are listed as a note |
@@ -183,6 +185,25 @@ measured in full by every other check.
 Known inconsistency, stated in the Layers check: checks that read page content
 look at hidden layers, checks that work from a render do not.
 
+## Trim marks and dielines (added 2026-11-17)
+
+Trim marks: corner crop marks in registration colour are found from the page
+content and the rectangle they point at is compared with the trim box. Eight
+samples have marks that agree.
+
+**The banner's marks do not agree, and this matters.** Its crop marks point at
+845.0 × 2100.0 mm, 7.4 mm inside the 859.8 × 2114.8 mm trim box (which equals
+the page). So the trim box is almost certainly wrong, the artwork probably has
+7.4 mm of bleed, and the banner's two "no bleed" fails and its "registration
+inside trim" fail all follow from the wrong box, not from the artwork. The
+owner's original verdict for the banner was a Bleed box warn, which fits.
+**Question for the owner:** when marks and trim box disagree, should the tool
+measure from the marks? Until decided it measures from the trim box and warns.
+
+Dielines: the wobblers file has a dieline of 148.0 × 208.0 mm inside an A4
+trim box, set to overprint. The size is the outer bounds of the dieline
+objects, not a measured cutting path.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -195,7 +216,8 @@ look at hidden layers, checks that work from a render do not.
    default stays at 400% as a placeholder.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
-5. Later checks: trim mark detection, dieline measurement.
+5. **Decide what to measure from when trim marks and trim box disagree** (the
+   banner). Then correct the banner's entry in `expected.json` to match.
 6. Later phases: page boxes, trim marks and scaling; bleed fixes; spot colour
    tools; action lists; desktop interface; object tree and editing.
 
