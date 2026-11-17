@@ -123,9 +123,14 @@ def verify_append(src, dst, original_size, changes) -> None:
     if not _same_prefix(src, dst, original_size):
         raise AppendError("verification failed: the original bytes were not preserved")
     with pikepdf.open(src) as before, pikepdf.open(dst) as after:
-        problems = after.check_pdf_syntax()
-        if problems:
-            raise AppendError("verification failed: the new file has structural problems: " + "; ".join(map(str, problems[:3])))
+        # Only problems the update introduced count: many real files already
+        # carry warnings (damaged streams, stale linearisation hints), and the
+        # update neither causes nor can cure those.
+        def problems(pdf, path):
+            return {str(p).replace(str(path), "FILE") for p in pdf.check_pdf_syntax()}
+        new = sorted(problems(after, dst) - problems(before, src))
+        if new:
+            raise AppendError("verification failed: the new file has structural problems: " + "; ".join(new[:3]))
         # unparse(resolved=True) prints an object's own contents (references inside
         # it stay as references); resolved=False would print only "N G R".
         for obj in before.objects:

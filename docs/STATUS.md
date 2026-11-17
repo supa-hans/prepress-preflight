@@ -258,6 +258,35 @@ references rather than contents, so "every other object is the same" was
 always true. Fixed and covered by a test before anything was committed.
 
 Limits: encrypted files are refused. Pages with a UserUnit are left alone.
+An appended update ends linearisation ("fast web view"), which does not matter
+for print. Structural warnings already in the original (the wobblers file has
+a stream that does not decode cleanly and stale linearisation hints) do not
+block a fix; only problems the update itself introduces do.
+
+The fixed banner still shows the Multiply fault in Preview and Acrobat's
+Flattener Preview, as expected: this fix changes the boxes, not the artwork.
+A fix for the fault itself (setting that group back to Normal) is parked at
+the owner's request (2026-11-18).
+
+## Second fix: set page boxes (added 2026-11-18)
+
+`preflight fix set-boxes file.pdf [--trim WxH] [--min-bleed MM]`. Sets the
+trim to the job size, centred where the current trim is and turned to match
+its orientation, and makes sure the bleed box gives at least the minimum
+bleed. Rules learned from the samples:
+
+- It never shrinks a bleed box that already gives more (the catalogue's 5 mm,
+  the business card's 7.4 mm), and only grows the short edges. When the trim
+  itself is reset, the old bleed box is replaced, since it was drawn around
+  the wrong trim.
+- It does not write a box whose value would not change what the file means,
+  for example a missing trim box set to the page size.
+- A page that ends at the trim cannot gain bleed by changing boxes. It says so
+  instead of proposing anything, and when crop marks disagree with the trim
+  box it points to `trim-from-marks` instead.
+
+On the samples, only the wobblers file gets a change: a 3 mm bleed box where
+there was none, which clears its "Bleed box not defined" warning.
 
 ## Next tasks, in order
 
@@ -272,7 +301,8 @@ Limits: encrypted files are refused. Pages with a UserUnit are left alone.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: page boxes, trim marks and scaling; bleed fixes; spot colour
+6. Later phases: adding trim marks and scaling (both change artwork, so
+   propose first); bleed fixes (Canva files need artwork extended, not boxes); spot colour
    tools; action lists; desktop interface; object tree and editing.
 
 ## Interface model (for later)

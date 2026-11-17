@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 from .checks import Options
+from .cli_common import parse_trim
 from .engine import run
 from .fixes import FIXES
 from .model import FAIL, UNCHECKED, WARN
@@ -75,11 +76,12 @@ def main(argv) -> int:
     parser.add_argument("file", help="the PDF to fix; it is never modified")
     parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
+    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes: the job's trim size in mm, e.g. 850x2000")
     parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="bleed to give the new bleed box (default 3)")
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
     args = parser.parse_args(argv)
 
-    options = Options(min_bleed_mm=args.min_bleed)
+    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim)
     propose, write = FIXES[args.name]
     try:
         proposal = propose(args.file, options)

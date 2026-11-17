@@ -7,25 +7,14 @@ CropBox, ArtBox and the artwork are not touched.
 """
 from __future__ import annotations
 
-import pikepdf
-
 from ..checks.base import Options
 from ..content import walk_page
 from ..document import Document
 from ..marks import implied_trim
 from ..model import mm
-from .append import append_update
-from .base import Change, Proposal
+from .base import Proposal, box_change, size_text, write_box_changes
 
 NAME = "trim-from-marks"
-
-
-def _size(box) -> str:
-    return f"{mm(box[2] - box[0]):.1f} × {mm(box[3] - box[1]):.1f} mm"
-
-
-def _round(box):
-    return [round(float(v), 3) for v in box]
 
 
 def propose_trim_from_marks(path: str, options: Options | None = None) -> Proposal:
@@ -49,19 +38,14 @@ def propose_trim_from_marks(path: str, options: Options | None = None) -> Propos
             if box[0] < m.x0 - 0.5 or box[1] < m.y0 - 0.5 or box[2] > m.x1 + 0.5 or box[3] > m.y1 + 0.5:
                 proposal.skipped.append((page.number, "the crop marks point outside the page"))
                 continue
-            trim = _round(box)
-            bleed = _round([max(m.x0, box[0] - grow), max(m.y0, box[1] - grow),
-                            min(m.x1, box[2] + grow), min(m.y1, box[3] + grow)])
-            obj = page.obj.obj
-            for key, new in (("TrimBox", trim), ("BleedBox", bleed)):
-                old = _round(obj["/" + key]) if "/" + key in obj else None
-                if old != new:
-                    proposal.changes.append(Change(page.number, key, old, new, _size(old) if old else "not set", _size(new)))
+            bleed = [max(m.x0, box[0] - grow), max(m.y0, box[1] - grow), min(m.x1, box[2] + grow), min(m.y1, box[3] + grow)]
+            box_change(proposal, page.number, page.obj.obj, "TrimBox", box)
+            box_change(proposal, page.number, page.obj.obj, "BleedBox", bleed)
             short = min(box[0] - m.x0, box[1] - m.y0, m.x1 - box[2], m.y1 - box[3])
             note = ""
             if short < grow - 0.01:
                 note = f" The page only allows {mm(short):.1f} mm of bleed, so the bleed box stops at the page edge."
-            proposal.reasons.append((page.number, f"Crop marks point at {_size(box)}; the trim box is {_size([t.x0, t.y0, t.x1, t.y1])}."
+            proposal.reasons.append((page.number, f"Crop marks point at {size_text(box)}; the trim box is {size_text([t.x0, t.y0, t.x1, t.y1])}."
                                                   + note))
     finally:
         doc.close()
@@ -70,18 +54,4 @@ def propose_trim_from_marks(path: str, options: Options | None = None) -> Propos
 
 def write_trim_from_marks(proposal: Proposal, dst: str) -> None:
     """Write the proposal to a new file `dst`. The original is never written to."""
-    if proposal.empty:
-        raise ValueError("nothing to change")
-    by_page: dict[int, dict] = {}
-    for c in proposal.changes:
-        by_page.setdefault(c.page, {})[c.box] = c.after
-    with pikepdf.open(proposal.path) as pdf:
-        changes = {}
-        for number, boxes in by_page.items():
-            page = pdf.pages[number - 1].obj
-            copy = pikepdf.Dictionary({k: page[k] for k in page.keys()})
-            for key, value in boxes.items():
-                copy["/" + key] = pikepdf.Array(value)
-            changes[page.objgen] = copy
-        # The copies refer to objects of this open file; serialise them while it is open.
-        append_update(proposal.path, dst, changes)
+    write_box_changes(proposal, dst)

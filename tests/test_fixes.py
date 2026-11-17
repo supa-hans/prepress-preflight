@@ -178,3 +178,96 @@ def test_command_writes_with_yes(make, tmp_path):
     dst = tmp_path / "fixed.pdf"
     assert main(["fix", "trim-from-marks", banner(make), "--write", str(dst), "--yes", "--no-preview"]) == 0
     assert dst.exists()
+
+
+# --- set-boxes
+from prepress_preflight.checks import Options  # noqa: E402
+from conftest import BLEEDBOX  # noqa: E402
+
+propose_boxes, write_boxes = FIXES["set-boxes"]
+ART = b"0 0 0 1 k 100 100 50 50 re f"
+
+
+def changes(p):
+    return {c.box: c for c in p.changes}
+
+
+def test_set_boxes_adds_a_bleed_box_where_there_is_room(make):
+    p = propose_boxes(make(ART, bleed=None))  # trim box only, 10 mm of page around it
+    c = changes(p)
+    assert set(c) == {"BleedBox"} and c["BleedBox"].after_mm == "106.0 × 66.0 mm"
+
+
+def test_set_boxes_sets_the_job_size_centred_on_the_trim(make):
+    p = propose_boxes(make(ART, trim=MEDIA, bleed=MEDIA), Options(expected_trim_mm=(100, 60)))
+    c = changes(p)
+    assert c["TrimBox"].after_mm == "100.0 × 60.0 mm"
+    assert c["TrimBox"].after == pytest.approx(TRIM, abs=0.01)  # the page is centred on the real trim
+    assert c["BleedBox"].after_mm == "106.0 × 66.0 mm"
+
+
+def test_set_boxes_turns_the_job_size_to_the_page(make):
+    p = propose_boxes(make(ART, trim=MEDIA, bleed=MEDIA), Options(expected_trim_mm=(60, 100)))
+    assert changes(p)["TrimBox"].after_mm == "100.0 × 60.0 mm"
+    assert "turned" in p.reasons[0][1]
+
+
+def test_set_boxes_refuses_a_trim_larger_than_the_page(make):
+    p = propose_boxes(make(ART), Options(expected_trim_mm=(500, 500)))
+    assert p.empty and "does not fit" in p.skipped[0][1]
+
+
+def test_set_boxes_explains_a_page_with_no_room_for_bleed(make):
+    p = propose_boxes(make(ART, media=TRIM, trim=None, bleed=None))
+    assert p.empty and "changing the artwork" in p.skipped[0][1]
+
+
+def test_set_boxes_with_correct_boxes_changes_nothing(make):
+    assert propose_boxes(make(ART)).empty
+
+
+def test_set_boxes_written_file_passes_the_bleed_box_check(make, tmp_path):
+    src = make(b"0 0 0 1 k " + rect(MEDIA) + b"f", trim=TRIM, bleed=TRIM)  # artwork bleeds, box says no bleed
+    assert [f for f in run(src).findings if f.check == "Bleed box" and f.severity in ("fail", "warn")]
+    dst = str(tmp_path / "fixed.pdf")
+    write_boxes(propose_boxes(src), dst)
+    assert not [f for f in run(dst).findings if f.check == "Bleed box" and f.severity in ("fail", "warn")]
+
+
+def test_set_boxes_command_takes_the_job_size(make, tmp_path, capsys):
+    src = make(ART, trim=MEDIA, bleed=MEDIA)
+    assert main(["fix", "set-boxes", src, "--trim", "100x60", "--no-preview"]) == 0
+    assert "100.0 × 60.0 mm" in capsys.readouterr().out
+
+
+def test_set_boxes_never_shrinks_a_generous_bleed_box(make):
+    assert propose_boxes(make(ART)).empty  # 3 mm already
+    big = (TRIM[0] - 8 * MM, TRIM[1] - 8 * MM, TRIM[2] + 8 * MM, TRIM[3] + 8 * MM)
+    assert propose_boxes(make(ART, bleed=big)).empty
+
+
+def test_set_boxes_only_grows_the_short_edges(make):
+    uneven = (TRIM[0] - 8 * MM, TRIM[1] - 1 * MM, TRIM[2] + 8 * MM, TRIM[3] + 8 * MM)  # 1 mm at the bottom
+    after = changes(propose_boxes(make(ART, bleed=uneven)))["BleedBox"].after
+    assert after == pytest.approx([uneven[0], TRIM[1] - 3 * MM, uneven[2], uneven[3]], abs=0.01)
+
+
+def test_set_boxes_points_to_trim_from_marks_when_the_marks_disagree(make):
+    p = propose_boxes(banner(make))
+    assert p.empty and "trim-from-marks" in p.skipped[0][1]
+
+
+def test_problems_already_in_the_original_do_not_block_a_fix(make, tmp_path):
+    # A stream that does not decode properly, as some real files have. The
+    # update cannot cause or cure that, so it must not stop the write.
+    src = make(ART, bleed=None)
+    with pikepdf.open(src, allow_overwriting_input=True) as pdf:
+        bad = pikepdf.Stream(pdf, b"x\x9c\x01\x02not really flate")
+        bad["/Filter"] = pikepdf.Name.FlateDecode
+        pdf.Root["/Damaged"] = pdf.make_indirect(bad)
+        pdf.save(src)
+    with pikepdf.open(src) as pdf:
+        assert pdf.check_pdf_syntax()  # the original really is damaged
+    dst = str(tmp_path / "fixed.pdf")
+    write_boxes(propose_boxes(src), dst)
+    assert os.path.exists(dst)
