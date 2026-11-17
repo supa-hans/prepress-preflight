@@ -35,6 +35,25 @@ preflight *.pdf                       # several files
 
 Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 
+## Fixes
+
+Fixes never change the file you give them. They show what they would change,
+and write a new file only when asked and confirmed.
+
+```sh
+preflight fix trim-from-marks banner.pdf                      # show the proposal and its effect
+preflight fix trim-from-marks banner.pdf --write banner-fixed.pdf   # write it, after you type yes
+```
+
+| Fix | What it changes |
+| --- | --- |
+| trim-from-marks | Sets the trim box to where the crop marks point, and the bleed box to that plus 3 mm (`--min-bleed`). Nothing else. |
+
+The new file is the original, byte for byte, with the changed page
+dictionaries appended (a PDF incremental update, as Acrobat's Save does). It
+is verified before it is put in place: original bytes intact, structure sound,
+only the intended objects changed.
+
 ## Checks
 
 | Check | Severity | Rule |

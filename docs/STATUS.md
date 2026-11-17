@@ -228,6 +228,37 @@ changed.
 All 14 samples run with no "could not check" findings. The slowest is the
 509 MB banner at about 11 seconds.
 
+## First fix: trim box from crop marks (added 2026-11-18)
+
+Approved by the owner as proposed. `preflight fix trim-from-marks file.pdf`
+shows what would change and runs preflight before and after (on a temporary
+copy that is deleted). It writes only with `--write NEW.pdf` and a typed "yes"
+(or `--yes` for scripts), never over the input or any existing file.
+
+It changes only TrimBox (to where the crop marks point) and BleedBox (the new
+trim plus 3 mm, `--min-bleed`, kept within the page). On the banner: trim
+845.0 × 2100.0 mm, bleed box 851.0 × 2106.0 mm. The crop marks stop 2.1 mm
+outside the trim, so the 3 mm bleed box takes in 0.9 mm of each mark's tip, in
+the area that is cut away.
+
+How it writes: an incremental update. The new file is the original's bytes,
+unchanged, followed by the changed page dictionaries and a small
+cross-reference section (classic table or cross-reference stream, matching the
+original). Before the new file is put in place it is verified: the original
+bytes are intact, the PDF structure is sound, the changed objects hold exactly
+the intended change, and every other object is the same as in the original.
+If any of that fails, nothing is written.
+
+On the real banner the new file is 767 bytes longer, preflight reports one
+fail (the Multiply fault) and "Trim marks agree with the trim box", and macOS
+Quick Look renders it.
+
+Bug found on the way: the first version of the verification compared object
+references rather than contents, so "every other object is the same" was
+always true. Fixed and covered by a test before anything was committed.
+
+Limits: encrypted files are refused. Pages with a UserUnit are left alone.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

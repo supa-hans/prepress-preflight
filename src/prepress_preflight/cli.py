@@ -1,4 +1,7 @@
-"""Command line: preflight file.pdf [--json] [--trim WxH] [--bound]"""
+"""Command line: preflight file.pdf [--json] [--trim WxH] [--bound]
+
+Also: preflight fix NAME file.pdf [--write new.pdf]  (see fix_cli.py)
+"""
 from __future__ import annotations
 
 import argparse
@@ -20,6 +23,10 @@ def parse_trim(text: str) -> tuple[float, float]:
 
 
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["fix"]:
+        from .fix_cli import main as fix_main
+        return fix_main(argv[1:])
     parser = argparse.ArgumentParser(prog="preflight", description="Read-only preflight checks for print PDFs.")
     parser.add_argument("files", nargs="+", help="PDF file(s) to check")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
