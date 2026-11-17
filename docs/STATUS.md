@@ -336,6 +336,46 @@ leaves the process silently discarding everything written to stderr. Error
 messages from the fix command vanished. The check now runs in a separate
 process.
 
+## Add bleed: clip to bleed box and trim marks (added 2026-11-18)
+
+Asked for by the owner after checking the bled files ("the bleed looks good on
+all three"). The owner confirmed that removing and adding trim marks is not a
+destructive action and the tool may do it.
+
+- `--clip-to-bleed` clips everything on the page to the bleed box, by wrapping
+  the existing content in a clip; the original content stream is not edited.
+  Verified by rendering the page without the new marks: nothing may be painted
+  outside the bleed box.
+- `--marks` adds eight trim marks in registration colour, 0.25 pt on a 1.25 pt
+  white keyline, 5 mm long, starting at the bleed box edge and lying along the
+  trim edges. The page grows to 9 mm round the trim (3 mm bleed + 5 mm mark +
+  1 mm). Existing crop marks are removed first: only registration-colour
+  straight lines lying along a trim edge, outside the trim. For that, the
+  page's own content is rewritten without those strokes (the old streams stay
+  in the file, unused). Marks inside a placed graphic leave the page alone.
+  Verified: exactly one set of eight marks, pointing at the trim.
+
+On the samples (both options): place cards FAIL -> PASS; Little Stars FAIL ->
+WARN; X-am posters still FAIL for 400% ink only. Banner, after trim-from-marks:
+its old marks are replaced, everything is clipped to 3 mm of bleed, and the
+only fail left is the Multiply fault.
+
+Two weaknesses in the Bleed artwork check were found and fixed on the way. No
+sample verdict changed:
+
+- Bleed of exactly 3 mm (the usual case, and what the clip produces) read as
+  2.7 mm, because the measuring strip ended exactly at 3 mm and lost its last
+  pixel. The strip now runs 0.5 mm deeper, and ink running to the edge of a
+  page that gives the full bleed counts as full bleed.
+- Where two shapes end on the trim (a white band over a coloured background),
+  anti-aliasing leaks a one-pixel hairline of the lower colour, which read as
+  artwork reaching the trim. The pixel either side of the trim is now left out.
+
+Limit found: Little Stars' 0.3 mm near-miss (pages 12 and 13) is at the edge
+of what the check can resolve. Whether it is reported depends on where the
+pixel grid falls, so it no longer shows. Slivers under about 0.3 mm are not
+reliably detected.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

@@ -165,4 +165,99 @@ def test_command_shows_it_adds_artwork(make, capsys):
     from prepress_preflight.cli import main
     assert main(["fix", "add-bleed", no_bleed(make), "--no-preview"]) == 0
     out = capsys.readouterr().out
-    assert "new bleed images are added beneath it, outside the trim" in out and "Nothing written" in out
+    assert "bleed is added beneath it" in out and "Nothing written" in out
+
+
+# --- clip to the bleed box, and trim marks
+from prepress_preflight.marks import _lines, implied_trim  # noqa: E402
+from prepress_preflight.content import walk_page  # noqa: E402
+from prepress_preflight.fixes.add_bleed import MARK_LENGTH_MM  # noqa: E402
+
+
+def mark_set(path):
+    with pikepdf.open(path) as pdf:
+        content = walk_page(pdf.pages[0])
+    h, v = _lines(content)
+    return h, v, implied_trim(content)
+
+
+def test_marks_are_added_round_the_trim(make, tmp_path):
+    _, dst = written(make, tmp_path, marks=True)
+    h, v, box = mark_set(dst)
+    assert len(h) == 4 and len(v) == 4
+    assert box == pytest.approx(list(PAGE), abs=0.05)
+    # each mark starts at the bleed box (3 mm out) and is 5 mm long
+    lengths = {round((x1 - x0) / MM, 1) for _, x0, x1 in h} | {round((y1 - y0) / MM, 1) for _, y0, y1 in v}
+    assert lengths == {MARK_LENGTH_MM}
+    assert min(x0 for _, x0, _ in h) == pytest.approx(PAGE[0] - 8 * MM, abs=0.05)
+    result = run(dst)
+    assert [f for f in result.findings if f.check == "Trim marks" and "agree" in f.message]
+    assert not fails(result, "Registration inside trim")
+
+
+def test_the_page_grows_to_hold_the_marks(make, tmp_path):
+    _, dst = written(make, tmp_path, marks=True)
+    media = boxes(dst)["MediaBox"]
+    assert media[0] == pytest.approx(PAGE[0] - 9 * MM, abs=0.01)  # 3 mm bleed + 5 mm mark + 1 mm
+
+
+def test_existing_marks_are_replaced_not_doubled(make, tmp_path):
+    from test_fixes import crop_marks
+    reg = {"/CS0": registration_space()}
+    src = make(FULL_K + b" " + crop_marks(PAGE, offset=6 * MM, length=3 * MM), media=MEDIA, trim=PAGE, bleed=None,
+               colorspace=reg)
+    p = propose(src, marks=True)
+    assert p.plan[1]["remove"] and "in place of the existing ones" in p.reasons[0][1]
+    dst = str(tmp_path / "bled.pdf")
+    write(p, dst)
+    h, v, box = mark_set(dst)
+    assert len(h) == 4 and len(v) == 4
+    assert {round((x1 - x0) / MM, 1) for _, x0, x1 in h} == {MARK_LENGTH_MM}  # only the new 5 mm marks remain
+
+
+def test_marks_inside_a_placed_graphic_leave_the_page_alone(make):
+    from test_fixes import crop_marks
+
+    def form(pdf):
+        return pdf.make_stream(crop_marks(PAGE, offset=6 * MM), Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Form,
+                               BBox=list(MEDIA), Resources=pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(
+                                   {"/CS0": registration_space()})))
+    src = make(FULL_K + b" /Fm0 Do", media=MEDIA, trim=PAGE, bleed=None, xobject={"/Fm0": form})
+    p = propose(src, marks=True)
+    assert p.empty and "placed graphic" in p.skipped[0][1]
+
+
+def test_clip_removes_artwork_beyond_the_bleed_box(make, tmp_path):
+    # artwork to the edge of a page with 10 mm of slug: clipped to 3 mm of bleed
+    src = make(b"0 0 0 1 k " + rect(MEDIA) + b"f", media=MEDIA, trim=PAGE, bleed=None)
+    dst = str(tmp_path / "clipped.pdf")
+    write(propose(src, clip=True), dst)
+    page = pymupdf.open(dst)[0]
+    pix = page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=72, alpha=False)
+    a = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 4)
+    assert a[2, 2, 3] == 0  # 0.7 mm in from the page corner: beyond the bleed box, now clean
+    centre = a[pix.height // 2, pix.width // 2, 3]
+    assert centre == 255
+
+
+def test_clip_and_marks_together_keep_the_marks(make, tmp_path):
+    src, dst = written(make, tmp_path, clip=True, marks=True)
+    h, v, box = mark_set(dst)
+    assert len(h) == 4 and len(v) == 4  # drawn after the clip, so not clipped away
+    assert not fails(run(dst), "Bleed artwork")
+
+
+def test_marks_alone_on_a_page_that_already_bleeds(make, tmp_path):
+    src = make(b"0 0 0 1 k " + rect(MEDIA) + b"f", media=MEDIA, trim=PAGE)  # bleeds already, 3 mm bleed box
+    p = propose(src, marks=True)
+    assert not p.plan[1]["edges"] and "Adds trim marks" in p.reasons[0][1]
+    dst = str(tmp_path / "marked.pdf")
+    write(p, dst)
+    assert len(mark_set(dst)[0]) == 4
+
+
+def test_command_takes_clip_and_marks(make, capsys):
+    from prepress_preflight.cli import main
+    assert main(["fix", "add-bleed", no_bleed(make), "--clip-to-bleed", "--marks", "--no-preview"]) == 0
+    out = capsys.readouterr().out
+    assert "Clips everything on the page to the bleed box" in out and "Adds trim marks" in out

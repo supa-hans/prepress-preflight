@@ -29,8 +29,8 @@ import pymupdf
 from ..checks.base import Options
 from ..content import walk_page
 from ..document import Document
-from ..edges import is_non_printing, scan_edges, spine_edge
-from ..marks import implied_trim
+from ..edges import _silenced, is_non_printing, scan_edges, spine_edge
+from ..marks import _lines, implied_trim
 from ..model import Box, mm
 from .append import AppendError, append_update
 from .base import Proposal, box_change, size_text
@@ -51,6 +51,11 @@ CARRY_MM = 1.0
 # spots where the artwork stops a hair short of the trim, leaving a white
 # sliver inside it that no bleed can fix. They stay in the preflight report.
 LEFT_SHORT_MM = 2.0
+# Trim marks, as Illustrator draws them: a thin registration-colour line on a
+# wider white keyline. They start at the bleed box and point at the trim.
+MARK_LENGTH_MM = 5.0
+MARK_WEIGHT_PT, KEYLINE_WEIGHT_PT = 0.25, 1.25
+SLUG_MARGIN_MM = 1.0  # page room beyond the end of the marks
 EDGES = ("left", "bottom", "right", "top")
 
 
@@ -97,7 +102,40 @@ def _edge_colour(content, strip):
     return ("rgb" if kinds["rgb"] else "cmyk"), ""
 
 
-def propose_add_bleed(path: str, options: Options | None = None, method: str = "mirror", **_) -> Proposal:
+def _old_marks(content, t: Box):
+    """Existing crop-mark strokes to remove before new marks are drawn.
+
+    Only registration-colour strokes whose every part is a thin straight line
+    lying along a trim edge, outside the trim. Returns (removals in the page's
+    own content as {position: ({"stroke"}, text render mode)}, number found
+    inside placed graphics).
+    """
+    def is_mark(b):
+        x0, y0, x1, y1 = b
+        if y1 - y0 <= 0.6 and x1 - x0 > 2:  # horizontal
+            y = (y0 + y1) / 2
+            return min(abs(y - t.y0), abs(y - t.y1)) <= 0.5 and (x1 <= t.x0 + 0.5 or x0 >= t.x1 - 0.5)
+        if x1 - x0 <= 0.6 and y1 - y0 > 2:  # vertical
+            x = (x0 + x1) / 2
+            return min(abs(x - t.x0), abs(x - t.x1)) <= 0.5 and (y1 <= t.y0 + 0.5 or y0 >= t.y1 - 0.5)
+        return False
+
+    removals, nested = {}, 0
+    for e in content.events:
+        if e.paint != "stroke" or not e.cs.is_registration or e.bbox is None or e.loc is None:
+            continue
+        if not all(is_mark(b) for b in e.boxes()):
+            continue
+        names, idx, tr = e.loc
+        if names:
+            nested += 1
+            continue
+        removals.setdefault(idx, ({"stroke"}, tr))
+    return removals, nested
+
+
+def propose_add_bleed(path: str, options: Options | None = None, method: str = "mirror",
+                      clip: bool = False, marks: bool = False, **_) -> Proposal:
     """What the fix would change. Reads only."""
     options = options or Options()
     if method not in ("mirror", "stretch"):
@@ -113,15 +151,15 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
                 continue
             content = walk_page(page.obj)
             t, m = page.trim, page.media
-            marks = implied_trim(content)
-            if marks is not None and max(abs(a - b) for a, b in zip(marks, t.as_list())) > 1.5:
-                proposal.skipped.append((page.number, f"the crop marks point at {size_text(marks)}, not at the trim box; "
+            found = implied_trim(content)
+            if found is not None and max(abs(a - b) for a, b in zip(found, t.as_list())) > 1.5:
+                proposal.skipped.append((page.number, f"the crop marks point at {size_text(found)}, not at the trim box; "
                                                       "run trim-from-marks first"))
                 continue
             scan = scan_edges(doc, page, content, need_mm)
             skip = spine_edge(page.number) if options.bound else None
             wanted = [n for n in EDGES if scan.edges[n].short_mm > 0 and n != skip]
-            if not wanted:
+            if not wanted and not (clip or marks):
                 continue
             edges, notes, refused = {}, [], []
             for name in wanted:
@@ -135,11 +173,25 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
             if refused:
                 proposal.skipped.append((page.number, "left alone because " + "; ".join(refused)))
                 continue
-            # Grow the page only where it has less room than the bleed needs;
-            # on the edges being filled, room for the overshoot as well.
+            removals = {}
+            if marks:
+                removals, nested = _old_marks(content, t)
+                if nested:
+                    proposal.skipped.append((page.number, "left alone because its existing crop marks are inside a "
+                                                          "placed graphic, so they cannot be replaced"))
+                    continue
+            # Grow the page only where it has less room than needed: the bleed,
+            # the overshoot on edges being filled, and the marks if asked for.
             depth = need + OVERSHOOT_MM * PT_PER_MM
+            bleed = [t.x0 - need, t.y0 - need, t.x1 + need, t.y1 + need]
+            if page.has_bleed:  # never shrink a bleed box that already gives more
+                b = page.bleed
+                bleed = [min(bleed[0], b.x0), min(bleed[1], b.y0), max(bleed[2], b.x1), max(bleed[3], b.y1)]
+            gap = {"left": t.x0 - bleed[0], "bottom": t.y0 - bleed[1], "right": bleed[2] - t.x1, "top": bleed[3] - t.y1}
+            tail = (MARK_LENGTH_MM + SLUG_MARGIN_MM) * PT_PER_MM
             room = {"left": t.x0 - m.x0, "bottom": t.y0 - m.y0, "right": m.x1 - t.x1, "top": m.y1 - t.y1}
-            grow = {n: max(0.0, (depth if n in edges else need) - room[n]) for n in EDGES}
+            extent = {n: max(depth if n in edges else need, gap[n] + tail if marks else 0.0) for n in EDGES}
+            grow = {n: max(0.0, extent[n] - room[n]) for n in EDGES}
             media = [m.x0 - grow["left"], m.y0 - grow["bottom"], m.x1 + grow["right"], m.y1 + grow["top"]]
             obj = page.obj.obj
             if any(g > 0.01 for g in grow.values()):
@@ -147,22 +199,27 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
                 if "/CropBox" in obj:
                     box_change(proposal, page.number, obj, "CropBox", media)
             box_change(proposal, page.number, obj, "TrimBox", t.as_list())
-            bleed = [t.x0 - need, t.y0 - need, t.x1 + need, t.y1 + need]
-            if page.has_bleed:  # never shrink a bleed box that already gives more
-                b = page.bleed
-                bleed = [min(bleed[0], b.x0), min(bleed[1], b.y0), max(bleed[2], b.x1), max(bleed[3], b.y1)]
+            bleed = [max(bleed[0], media[0]), max(bleed[1], media[1]), min(bleed[2], media[2]), min(bleed[3], media[3])]
             box_change(proposal, page.number, obj, "BleedBox", bleed)
             long_side = max(mm(t.width), mm(t.height))
             dpi = LARGE_DPI if long_side > LARGE_MM else DPI
             proposal.plan[page.number] = {"edges": edges, "need": need, "depth": depth, "method": method, "dpi": dpi,
-                                          "trim": t.as_list(), "old_media": m.as_list(), "new_media": media}
-            spaces = ", ".join(f"{n} ({c.upper()})" for n, c in edges.items())
-            text = f"Adds {need_mm:g} mm of {method}ed bleed on {spaces} at {dpi} ppi."
+                                          "trim": t.as_list(), "bleed": bleed, "old_media": m.as_list(),
+                                          "new_media": media, "clip": clip, "marks": marks,
+                                          "remove": {i: (sorted(p), tr) for i, (p, tr) in removals.items()}}
+            parts = []
+            if edges:
+                spaces = ", ".join(f"{n} ({c.upper()})" for n, c in edges.items())
+                parts.append(f"Adds {need_mm:g} mm of {method}ed bleed on {spaces} at {dpi} ppi.")
+            if clip:
+                parts.append("Clips everything on the page to the bleed box.")
+            if marks:
+                parts.append(f"Adds trim marks{' in place of the existing ones' if removals else ''}.")
             if any(g > 0.01 for g in grow.values()):
-                text += " The page grows to make room; the old page size becomes the trim box."
+                parts.append("The page grows to make room; the trim is unchanged.")
             if notes:
-                text += " " + "; ".join(notes) + "."
-            proposal.reasons.append((page.number, text))
+                parts.append("; ".join(notes) + ".")
+            proposal.reasons.append((page.number, " ".join(parts)))
     finally:
         doc.close()
     return proposal
@@ -300,6 +357,37 @@ def build_underlay(pdf, mu_page, plan, cache=None):
     return images, cache[key]
 
 
+REG_CS = "PreflightRegistration"
+
+
+def _registration(pdf):
+    tint = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[1, 1, 1, 1], N=1)
+    return pikepdf.Array([pikepdf.Name.Separation, pikepdf.Name.All, pikepdf.Name.DeviceCMYK, tint])
+
+
+def mark_lines(trim, bleed):
+    """The eight trim marks: two per corner, starting at the bleed box and
+    lying along the trim edges, pointing at the corner. (x0, y0, x1, y1) each."""
+    t, b = Box(*trim), Box(*bleed)
+    n = MARK_LENGTH_MM * PT_PER_MM
+    lines = []
+    for x, outward_x in ((t.x0, -(t.x0 - b.x0)), (t.x1, b.x1 - t.x1)):
+        for y, outward_y in ((t.y0, -(t.y0 - b.y0)), (t.y1, b.y1 - t.y1)):
+            sx = -1 if outward_x < 0 else 1
+            sy = -1 if outward_y < 0 else 1
+            hx = x + outward_x  # horizontal mark along the trim edge y, from the bleed box outward
+            lines.append((hx, y, hx + sx * n, y))
+            vy = y + outward_y
+            lines.append((x, vy, x, vy + sy * n))
+    return lines
+
+
+def marks_content(plan) -> bytes:
+    path = " ".join(f"{a:.4f} {b:.4f} m {c:.4f} {d:.4f} l" for a, b, c, d in mark_lines(plan["trim"], plan["bleed"]))
+    return (f"q 0 J [] 0 d /{REG_CS} CS 0 SCN {KEYLINE_WEIGHT_PT} w {path} S "
+            f"1 SCN {MARK_WEIGHT_PT} w {path} S Q\n").encode()
+
+
 def _check_trim_unchanged(src, plans):
     """Refuse the new file unless the artwork inside each trim renders exactly as before."""
     def check(new_path):
@@ -316,7 +404,7 @@ def _check_trim_unchanged(src, plans):
                     after.xref_set_key(x, "CropBox", box)
                 w_in, h_in = (old[2] - old[0]) / 72, (old[3] - old[1]) / 72
                 dpi = int(max(36, min(150, (4_000_000 / max(w_in * h_in, 1e-6)) ** 0.5)))
-                for colour in sorted(set(plan["edges"].values())):
+                for colour in sorted(set(plan["edges"].values()) or {"cmyk"}):
                     cs = pymupdf.csCMYK if colour == "cmyk" else pymupdf.csRGB
                     pa, pb = before.load_page(number - 1), after.load_page(number - 1)
                     # Only the trim: on a page that had room, the new bleed lies on the page.
@@ -339,13 +427,56 @@ def _check_trim_unchanged(src, plans):
         try:
             for number, plan in plans.items():
                 page = doc.pages[number - 1]
-                scan = scan_edges(doc, page, walk_page(page.obj), mm(plan["need"]))
+                content = walk_page(page.obj)
+                scan = scan_edges(doc, page, content, mm(plan["need"]))
                 short = [n for n in plan["edges"] if scan.edges[n].short_mm > LEFT_SHORT_MM]
                 if short:
                     raise AppendError(f"verification failed: page {number} still lacks bleed on " + ", ".join(short))
+                if plan["marks"]:
+                    _check_marks(number, content, plan)
         finally:
             doc.close()
+        if any(plan["clip"] for plan in plans.values()):
+            _check_clip(new_path, plans)
     return check
+
+
+def _check_marks(number, content, plan):
+    """Exactly one set of eight marks, pointing at the trim."""
+    t = Box(*plan["trim"])
+    horizontal, vertical = _lines(content)
+    on_edges = [h for h in horizontal if min(abs(h[0] - t.y0), abs(h[0] - t.y1)) <= 0.5]
+    on_edges += [v for v in vertical if min(abs(v[0] - t.x0), abs(v[0] - t.x1)) <= 0.5]
+    box = implied_trim(content)
+    if len(on_edges) != 8 or box is None or max(abs(a - b) for a, b in zip(box, plan["trim"])) > 0.5:
+        raise AppendError(f"verification failed: page {number} does not have exactly one set of trim marks "
+                          f"pointing at the trim ({len(on_edges)} mark lines found)")
+
+
+def _check_clip(new_path, plans):
+    """With the new marks left out, nothing may be painted outside the bleed box."""
+    doc = pymupdf.open(new_path)  # in memory only; never saved
+    try:
+        for number, plan in plans.items():
+            if not plan["clip"]:
+                continue
+            if plan.get("post_xref"):
+                doc.update_stream(plan["post_xref"], b"Q\n")
+            page = doc.load_page(number - 1)
+            to_dev = page.transformation_matrix * page.rotation_matrix
+            w, h = page.rect.width / 72, page.rect.height / 72
+            dpi = int(max(18, min(72, (4_000_000 / max(w * h, 1e-6)) ** 0.5)))
+            pix = page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, alpha=False, annots=False)
+            ink = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, 4).max(axis=2) > 0
+            r = (pymupdf.Rect(plan["bleed"]) * to_dev).normalize()
+            s = dpi / 72
+            x0, y0 = int(np.floor(r.x0 * s)) - 1, int(np.floor(r.y0 * s)) - 1
+            x1, y1 = int(np.ceil(r.x1 * s)) + 1, int(np.ceil(r.y1 * s)) + 1
+            ink[max(y0, 0):max(y1, 0), max(x0, 0):max(x1, 0)] = False
+            if ink.any():
+                raise AppendError(f"verification failed: page {number} has artwork outside the bleed box after clipping")
+    finally:
+        doc.close()
 
 
 def write_add_bleed(proposal: Proposal, dst: str) -> None:
@@ -362,7 +493,8 @@ def write_add_bleed(proposal: Proposal, dst: str) -> None:
             for number, plan in proposal.plan.items():
                 page = pdf.pages[number - 1]
                 obj = page.obj
-                images, underlay = build_underlay(pdf, mu.load_page(number - 1), plan, cache)
+                images, underlay = (build_underlay(pdf, mu.load_page(number - 1), plan, cache)
+                                    if plan["edges"] else ({}, None))
                 copy = pikepdf.Dictionary({k: obj[k] for k in obj.keys()})
                 for key, value in boxes.get(number, {}).items():
                     copy["/" + key] = pikepdf.Array(value)
@@ -374,12 +506,38 @@ def write_add_bleed(proposal: Proposal, dst: str) -> None:
                 for name, image in images.items():
                     xobjects["/" + name] = image
                     additions[image.objgen] = image
-                res["/XObject"] = xobjects
-                copy["/Resources"] = res
+                if images:
+                    res["/XObject"] = xobjects
                 contents = obj.get("/Contents")
                 existing = list(contents) if isinstance(contents, pikepdf.Array) else ([contents] if contents is not None else [])
-                copy["/Contents"] = pikepdf.Array([underlay] + existing)
-                additions[underlay.objgen] = underlay
+                if plan["remove"]:
+                    # The old crop marks are taken out of a copy of the page's own
+                    # content; the original streams stay in the file, unused.
+                    removals = {int(i): (set(p), tr) for i, (p, tr) in plan["remove"].items()}
+                    kept = _silenced(list(pikepdf.parse_content_stream(obj)), removals)
+                    rewritten = pdf.make_indirect(pikepdf.Stream(pdf, pikepdf.unparse_content_stream(kept)))
+                    additions[rewritten.objgen] = rewritten
+                    existing = [rewritten]
+                parts = ([underlay] if underlay is not None else []) + existing
+                if underlay is not None:
+                    additions[underlay.objgen] = underlay
+                if plan["clip"] or plan["marks"]:
+                    # Everything the page had, plus the bleed, inside q ... Q,
+                    # clipped to the bleed box if asked; the marks come after.
+                    b = plan["bleed"]
+                    head = "q\n" + (f"{b[0]:.4f} {b[1]:.4f} {b[2] - b[0]:.4f} {b[3] - b[1]:.4f} re W n\n" if plan["clip"] else "")
+                    pre = pdf.make_indirect(pikepdf.Stream(pdf, head.encode()))
+                    post = pdf.make_indirect(pikepdf.Stream(pdf, b"Q\n" + (marks_content(plan) if plan["marks"] else b"")))
+                    additions[pre.objgen], additions[post.objgen] = pre, post
+                    plan["post_xref"] = post.objgen[0]
+                    parts = [pre] + parts + [post]
+                    if plan["marks"]:
+                        spaces = res.get("/ColorSpace")
+                        spaces = pikepdf.Dictionary({k: spaces[k] for k in spaces.keys()}) if spaces is not None else pikepdf.Dictionary()
+                        spaces["/" + REG_CS] = _registration(pdf)
+                        res["/ColorSpace"] = spaces
+                copy["/Resources"] = res
+                copy["/Contents"] = pikepdf.Array(parts)
                 changes[obj.objgen] = copy
             append_update(proposal.path, dst, changes, additions, extra_check=_check_trim_unchanged(proposal.path, proposal.plan))
     finally:

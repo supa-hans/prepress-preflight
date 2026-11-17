@@ -27,6 +27,7 @@ INK_FLOOR = 12  # of 255; at the trim, a tint under 5% in every ink counts as wh
 MARGIN_FLOOR = 38  # of 255; loose artwork in the safe margin must be 15% or more: a pale fade is not an object
 BLEED_FLOOR = 4  # of 255; past the trim anything over 1.5% counts, so a fade that thins out still bleeds
 MIN_RUN_MM = 1.0  # shorter stretches along an edge are ignored
+BEYOND_MM = 0.5  # the bleed strip is rendered this much deeper than the bleed needed
 SLANT = 2.0  # sideways leeway per unit of distance out, for artwork with slanted sides
 MAX_DPI = 150
 MAX_ALONG_PX = 16000
@@ -217,12 +218,24 @@ def _strip(mu_page, page, name, inside_mm, outside_mm):
 
 
 def _scan_edge(mu_page, page, name, need_mm):
-    ink, split, px_mm, box, along_pt, room = _strip(mu_page, page, name, INSIDE_MM, need_mm)
-    within, beyond = ink[:, :split] > INK_FLOOR, ink[:, split:] > BLEED_FLOOR
+    # Render a little past the depth needed: if the strip ended exactly there,
+    # its last pixel would be cut off and bleed of exactly the right depth
+    # (the usual case) would read short.
+    ink, split, px_mm, box, along_pt, room = _strip(mu_page, page, name, INSIDE_MM, need_mm + BEYOND_MM)
+    # The pixel either side of the trim straddles it. Where two shapes end on
+    # the trim (a background and a band over it), anti-aliasing leaks the lower
+    # colour into that pixel as a hairline that is not in the artwork. So the
+    # pixel next to the trim is left out on both sides.
+    within = ink[:, :max(split - 1, 0)] > INK_FLOOR
+    beyond = ink[:, split + 1:] > BLEED_FLOOR
     reaches = within.any(axis=1) if within.shape[1] else np.zeros(ink.shape[0], bool)
     depth = _bleed_depth(beyond)
-    need_px = need_mm / px_mm - 1.5  # allow for the pixel grid
+    need_px = need_mm / px_mm - 2.5  # allow for the pixel grid and the pixel left out
     short = reaches & (depth < need_px)
+    if beyond.shape[1] and page.mm(room) >= need_mm - 0.05:
+        # Ink running all the way to the page edge, on a page that gives the
+        # full bleed, is full bleed however the last pixel is rounded.
+        short &= depth < beyond.shape[1]
     min_run = max(2, int(round(MIN_RUN_MM / px_mm)))
     inked_px = sum(b - a for a, b in _runs(reaches) if b - a >= min_run)
     short_runs = [(a, b) for a, b in _runs(short) if b - a >= min_run]

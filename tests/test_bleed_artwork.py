@@ -153,3 +153,11 @@ def test_bound_job_does_not_ask_the_spine_edge_to_bleed(make):
 def test_bound_job_still_needs_bleed_on_the_outer_edges(make):
     box = (BLEEDBOX[0], BLEEDBOX[1], TRIM[2], BLEEDBOX[3])  # no bleed on the right of page 1
     assert fails(run(make(K + rect(box) + b"f"), Options(bound=True)))
+
+
+def test_white_shape_exactly_over_a_coloured_one_at_the_trim_is_not_artwork_reaching_it(make):
+    # A white band drawn exactly over a blue one, both ending on the trim: anti-aliasing
+    # leaks a blue hairline at the trim on screen. That is not artwork reaching the trim.
+    band = (TRIM[0], 100, TRIM[2], 130)
+    content = b"0.9 0.6 0 0 k " + rect(band) + b"f 0 0 0 0 k " + rect(band) + b"f"
+    assert not fails(run(make(content)))

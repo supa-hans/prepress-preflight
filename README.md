@@ -45,12 +45,13 @@ preflight fix trim-from-marks banner.pdf                      # show the proposa
 preflight fix trim-from-marks banner.pdf --write banner-fixed.pdf   # write it, after you type yes
 preflight fix set-boxes flyer.pdf --trim 210x297                   # set the trim to A4 and a 3 mm bleed box
 preflight fix add-bleed canva.pdf --write canva-bleed.pdf           # make 3 mm of bleed where the artwork stops at the trim
+preflight fix add-bleed canva.pdf --clip-to-bleed --marks --write canva-press.pdf   # also clip to the bleed box and add trim marks
 ```
 
 | Fix | What it changes |
 | --- | --- |
 | trim-from-marks | Sets the trim box to where the crop marks point, and the bleed box to that plus 3 mm (`--min-bleed`). Nothing else. |
-| add-bleed | Makes bleed where artwork stops at the trim: the edge is mirrored outward (`--method stretch` repeats it instead) as an image beneath the artwork, outside the trim, and the page grows to hold it. The artwork inside the trim is proved unchanged. |
+| add-bleed | Makes bleed where artwork stops at the trim: the edge is mirrored outward (`--method stretch` repeats it instead) as an image beneath the artwork, outside the trim, and the page grows to hold it. `--clip-to-bleed` clips everything to the bleed box; `--marks` adds trim marks outside it, replacing any existing ones. The artwork inside the trim is proved unchanged. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
 The new file is the original, byte for byte, with the changes appended (a PDF
