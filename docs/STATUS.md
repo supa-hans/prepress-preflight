@@ -18,6 +18,7 @@
 | Blend over same ink | note | As above, staying within 100% |
 | Total ink | fail | Over the limit across at least 1 mm², or any vector or text object coloured over it. Limit is `--ink-limit`, default 400% until the press limit is known |
 | Image resolution | warn | Under 150 ppi. 300 preferred; large format may sit lower |
+| Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
 | Font embedding | fail | A font used for visible text is not embedded |
 
@@ -142,19 +143,42 @@ intentional; unembedded fonts fail, because the RIP substitutes another font.
 - **Font embedding.** Every font used in the samples is embedded, so the fail
   is proven only on synthetic files.
 
+## Safe margin (check added 2026-11-17)
+
+The owner left the distance to Claude. It is 1.5 mm by default because the
+Tempest label, an agreed PASS, has a printed black border about 1.8 mm inside
+the trim: a 3 mm rule would have contradicted that verdict. Use
+`--safe-margin 3` (or 5) for books and brochures.
+
+Two measurements: live text (word boxes from the renderer), and ink on a white
+edge that comes inside the margin without reaching the trim. Artwork that
+reaches the trim is the bleed checks' business. Built in from the samples:
+
+- A pale fade near the edge is not an object (catalogue pages 3 to 7, about 6%
+  ink): margin artwork must be 15% or more.
+- Display type over 25 mm that runs off the page is deliberate (the catalogue's
+  section pages) and is not reported as cut text.
+
+Results: Little Stars has one word per page touching the bottom trim (all 49
+pages) and one word 0.8 mm from it. Nothing else is flagged at 1.5 mm. At 5 mm
+the yearbook would be flagged on most pages (text 3.2 mm from the trim).
+
+Limits: outlined type is only seen on a white edge, not over a background that
+bleeds. Word boxes include the full line height.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
    (owner, 2026-11-17), so what it did with the Multiply stays an inference.
    Watch whether the warn level is too noisy on InDesign jobs.
-2. **Safe margin check.** The yearbook has text and images 3 to 4 mm from the
-   trim. Propose a rule (distance and severity) before building.
+2. **Safe margin: confirm the distance.** 1.5 mm is the default; the owner may
+   want a larger one per product type.
 3. **Total ink: set the real press limit.** The area report and `--ink-limit`
    are done. The owner does not have the press limits yet (2026-11-17), so the
    default stays at 400% as a placeholder.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
-5. Later checks: safe margin, trim mark detection, dieline measurement,
+5. Later checks: trim mark detection, dieline measurement,
    annotations, layers, security, output intent.
 6. Later phases: page boxes, trim marks and scaling; bleed fixes; spot colour
    tools; action lists; desktop interface; object tree and editing.

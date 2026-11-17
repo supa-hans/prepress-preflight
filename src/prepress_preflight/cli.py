@@ -25,6 +25,8 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
     parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="expected trim size in mm, e.g. 90x55")
     parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="minimum bleed (default 3)")
+    parser.add_argument("--safe-margin", type=float, default=1.5, metavar="MM",
+                        help="keep text and loose artwork this far inside the trim (default 1.5)")
     parser.add_argument("--ink-limit", type=float, default=400.0, metavar="PCT",
                         help="total ink limit in percent (default 400, a placeholder until the press limit is known)")
     parser.add_argument("--bound", action="store_true",
@@ -33,7 +35,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     options = Options(expected_trim_mm=args.trim, min_bleed_mm=args.min_bleed, bound=args.bound,
-                      ink_limit_pct=args.ink_limit)
+                      ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin)
     results, errors = [], 0
     for path in args.files:
         try:

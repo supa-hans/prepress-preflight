@@ -24,6 +24,7 @@ from .rebuild import PageRebuild
 
 INSIDE_MM = 0.5  # ink this close to the trim counts as reaching it
 INK_FLOOR = 12  # of 255; at the trim, a tint under 5% in every ink counts as white
+MARGIN_FLOOR = 38  # of 255; loose artwork in the safe margin must be 15% or more: a pale fade is not an object
 BLEED_FLOOR = 4  # of 255; past the trim anything over 1.5% counts, so a fade that thins out still bleeds
 MIN_RUN_MM = 1.0  # shorter stretches along an edge are ignored
 SLANT = 2.0  # sideways leeway per unit of distance out, for artwork with slanted sides
@@ -170,12 +171,18 @@ def _bleed_depth(beyond):
     return depth
 
 
-def _scan_edge(mu_page, page, name, need_mm):
+def _strip(mu_page, page, name, inside_mm, outside_mm):
+    """Render the strip along one edge, from `inside_mm` within the trim to
+    `outside_mm` beyond it (or as far as the page goes).
+
+    Returns the strongest ink per pixel with rows running along the edge and
+    columns running outward, the column where the trim falls, the size of a
+    pixel in mm, the strip's box in page units, the edge length in page units
+    and how far the page extends past the trim.
+    """
     t, m = page.trim, page.media
     unit_mm = page.mm(1.0)
-    inside, need = INSIDE_MM / unit_mm, need_mm / unit_mm
-    # Strip in page units: `inside` within the trim to `need` beyond it; and the
-    # outward direction, the trim line and the two ends of the edge.
+    inside, need = inside_mm / unit_mm, outside_mm / unit_mm
     if name == "left":
         box, out, line, room = [max(t.x0 - need, m.x0), t.y0, t.x0 + inside, t.y1], (-1, 0), (t.x0, t.y0), t.x0 - m.x0
     elif name == "right":
@@ -204,11 +211,13 @@ def _scan_edge(mu_page, page, name, need_mm):
         ink, split, outward = ink.T, trim_at.y * scale - pix.y, v.y > 0
     if not outward:
         ink, split = ink[:, ::-1], ink.shape[1] - split
-    split = int(round(split))
-    split = max(0, min(ink.shape[1], split))
-    within, beyond = ink[:, :split] > INK_FLOOR, ink[:, split:] > BLEED_FLOOR
+    split = max(0, min(ink.shape[1], int(round(split))))
+    return ink, split, 25.4 / dpi * page.unit, box, along_pt, room
 
-    px_mm = 25.4 / dpi * page.unit
+
+def _scan_edge(mu_page, page, name, need_mm):
+    ink, split, px_mm, box, along_pt, room = _strip(mu_page, page, name, INSIDE_MM, need_mm)
+    within, beyond = ink[:, :split] > INK_FLOOR, ink[:, split:] > BLEED_FLOOR
     reaches = within.any(axis=1) if within.shape[1] else np.zeros(ink.shape[0], bool)
     depth = _bleed_depth(beyond)
     need_px = need_mm / px_mm - 1.5  # allow for the pixel grid
@@ -223,6 +232,46 @@ def _scan_edge(mu_page, page, name, need_mm):
         # Location: the whole edge strip. Good enough to point at the edge.
         hit = [box[0], box[1], box[2], box[3]]
     return EdgeScan(name, page.mm(along_pt), max(page.mm(room), 0.0), inked_px * px_mm, short_px * px_mm, least, hit)
+
+
+@dataclass
+class MarginScan:
+    name: str
+    close_mm: float  # length of the edge with artwork inside the margin that stops short of the trim
+    nearest_mm: float | None  # how close that artwork comes to the trim
+    box: list | None
+
+
+def scan_margin(mu_page, page, name, margin_mm) -> MarginScan:
+    """Artwork that sits inside the safe margin without reaching the trim.
+
+    Artwork that reaches the trim is meant to be cut through and is the bleed
+    check's business. Next to such artwork a slanted side can sit inside the
+    margin without reaching the trim, so positions within one margin's width of
+    it along the edge are left alone.
+    """
+    ink, split, px_mm, box, _, _ = _strip(mu_page, page, name, margin_mm, 0.0)
+    band = ink[:, :split]
+    rows, cols = band.shape
+    edge_px = min(cols, max(1, int(round(INSIDE_MM / px_mm))))
+    reaches = (band[:, cols - edge_px:] > INK_FLOOR).any(axis=1) if cols else np.zeros(rows, bool)
+    inner = band[:, :cols - edge_px] > MARGIN_FLOOR
+    near = inner.any(axis=1) if inner.shape[1] else np.zeros(rows, bool)
+    spread = int(round(margin_mm / px_mm))
+    total = np.concatenate(([0], np.cumsum(reaches)))
+    lo, hi = np.clip(np.arange(rows) - spread, 0, rows), np.clip(np.arange(rows) + spread + 1, 0, rows)
+    beside_bleed = (total[hi] - total[lo]) > 0
+    close = near & ~beside_bleed
+    min_run = max(2, int(round(MIN_RUN_MM / px_mm)))
+    runs = [(a, b) for a, b in _runs(close) if b - a >= min_run]
+    if not runs:
+        return MarginScan(name, 0.0, None, None)
+    # Distance from the trim to the nearest ink: columns count outward, so the
+    # last inked column of the inner band is the closest.
+    last = inner.shape[1] - 1 - inner[:, ::-1].argmax(axis=1)
+    gap_px = cols - 1 - last
+    nearest = min(float(gap_px[a:b].min()) for a, b in runs) * px_mm
+    return MarginScan(name, sum(b - a for a, b in runs) * px_mm, nearest, list(box))
 
 
 def printing_page(doc, page, content):

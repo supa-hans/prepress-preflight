@@ -24,6 +24,7 @@ class Options:
     # A bound job (booklet, catalogue): the spine edge of each page is not
     # trimmed, so it needs no bleed. Page 1 is taken as a right-hand page.
     bound: bool = False
+    safe_margin_mm: float = 1.5
 
 
 class Check:

@@ -3,6 +3,7 @@ from .base import Check, Options
 from .page_size import PageSizeCheck
 from .bleed import BleedBoxCheck
 from .bleed_artwork import BleedArtworkCheck
+from .safe_margin import SafeMarginCheck
 from .rgb import RGBCheck
 from .white_overprint import WhiteOverprintCheck
 from .registration import RegistrationCheck
@@ -17,6 +18,7 @@ ALL_CHECKS = [
     PageSizeCheck,
     BleedBoxCheck,
     BleedArtworkCheck,
+    SafeMarginCheck,
     RGBCheck,
     WhiteOverprintCheck,
     RegistrationCheck,
