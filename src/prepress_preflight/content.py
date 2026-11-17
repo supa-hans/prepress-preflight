@@ -1,0 +1,445 @@
+"""Walk a page's content and report every painted object.
+
+This is the read-only core of the engine. It interprets the page content
+stream (and any nested form XObjects), tracking the graphics state, and emits
+one Event per painted object: its colour space, colour, overprint setting and
+approximate position. Checks consume these events; nothing here writes to the
+file.
+
+Known limits, stated so no check claims more than it knows:
+  * Clipping paths are not applied. An object's position is where it is drawn,
+    not what remains visible after clipping.
+  * Text positions are approximate (no font metrics are read).
+  * Optional content (layers) visibility is ignored; hidden layers are walked.
+"""
+from __future__ import annotations
+
+import math
+from collections import Counter
+from dataclasses import dataclass
+
+import pikepdf
+
+IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+PROCESS_NAMES = {"Cyan", "Magenta", "Yellow", "Black"}
+MAX_DEPTH = 12
+
+
+def mat_mul(m, n):
+    """Matrix for 'apply m, then n'."""
+    a, b, c, d, e, f = m
+    A, B, C, D, E, F = n
+    return (a * A + b * C, a * B + b * D, c * A + d * C, c * B + d * D, e * A + f * C + E, e * B + f * D + F)
+
+
+def mat_apply(m, x, y):
+    return (x * m[0] + y * m[2] + m[4], x * m[1] + y * m[3] + m[5])
+
+
+@dataclass(frozen=True)
+class ColourSpace:
+    kind: str  # gray | rgb | cmyk | lab | sep | pattern | unknown
+    names: tuple = ()  # colourant names for sep (Separation / DeviceN)
+    indexed: bool = False
+
+    @property
+    def is_registration(self) -> bool:
+        return self.kind == "sep" and "All" in self.names
+
+    @property
+    def spot_names(self) -> tuple:
+        return tuple(n for n in self.names if n not in PROCESS_NAMES and n not in ("All", "None"))
+
+
+GRAY = ColourSpace("gray")
+RGB = ColourSpace("rgb")
+CMYK = ColourSpace("cmyk")
+PATTERN = ColourSpace("pattern")
+UNKNOWN = ColourSpace("unknown")
+_DEVICE = {
+    "/DeviceGray": GRAY, "/G": GRAY, "/CalGray": GRAY,
+    "/DeviceRGB": RGB, "/RGB": RGB, "/CalRGB": RGB,
+    "/DeviceCMYK": CMYK, "/CMYK": CMYK,
+    "/Pattern": PATTERN, "/Lab": ColourSpace("lab"),
+}
+
+
+class Event:
+    """One painted object."""
+
+    __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts")
+
+    def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None):
+        self.kind = kind  # path | text | image | imagemask | shading
+        self.paint = paint  # fill | stroke
+        self.cs = cs
+        self.colour = colour  # tuple of floats, or None when not a plain colour
+        self.bbox = bbox  # (x0, y0, x1, y1) in page points, or None when unknown
+        self.overprint = overprint
+        self.opm = opm
+        self.px = px  # (width, height) in pixels, images only
+        self.ppi = ppi  # effective resolution at placed size, images only
+        # A path can hold several separate shapes (all eight crop marks are often
+        # one path). `parts` lists each shape's own bounding box when there are several.
+        self.parts = parts
+
+    def boxes(self):
+        """Bounding boxes to test for position: one per shape when known."""
+        if self.parts:
+            return self.parts
+        return [self.bbox] if self.bbox is not None else []
+
+
+class PageContent:
+    def __init__(self):
+        self.events: list[Event] = []
+        self.blend_modes: set[str] = set()
+        self.problems: Counter = Counter()
+
+
+class _State:
+    __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm",
+                 "tm", "tlm", "fsize", "leading", "tr")
+
+    def __init__(self):
+        self.ctm = IDENTITY
+        self.fcs = GRAY
+        self.fcol = (0.0,)
+        self.fpat = None
+        self.scs = GRAY
+        self.scol = (0.0,)
+        self.spat = None
+        self.op_fill = False
+        self.op_stroke = False
+        self.opm = 0
+        self.tm = IDENTITY
+        self.tlm = IDENTITY
+        self.fsize = 0.0
+        self.leading = 0.0
+        self.tr = 0
+
+    def copy(self):
+        s = _State.__new__(_State)
+        for k in _State.__slots__:
+            setattr(s, k, getattr(self, k))
+        return s
+
+
+def _nums(operands):
+    out = []
+    for o in operands:
+        try:
+            out.append(float(o))
+        except (TypeError, ValueError):
+            pass
+    return tuple(out)
+
+
+class PageWalker:
+    def __init__(self, page: pikepdf.Page):
+        self.page = page
+        self.out = PageContent()
+        self._cs_cache: dict = {}
+        self._active: set = set()
+
+    # ---- colour spaces -------------------------------------------------
+    def resolve_cs(self, obj, resources, depth=0) -> ColourSpace:
+        if depth > 6 or obj is None:
+            return UNKNOWN
+        try:
+            if isinstance(obj, pikepdf.Name):
+                name = str(obj)
+                if name in _DEVICE:
+                    return _DEVICE[name]
+                spaces = resources.get("/ColorSpace") if resources is not None else None
+                if spaces is not None and name in spaces:
+                    return self.resolve_cs(spaces[name], resources, depth + 1)
+                return UNKNOWN
+            if isinstance(obj, pikepdf.Array) and len(obj) > 0:
+                head = str(obj[0])
+                if head == "/ICCBased":
+                    n = int(obj[1].get("/N", 0))
+                    return {1: GRAY, 3: RGB, 4: CMYK}.get(n, UNKNOWN)
+                if head == "/Indexed":
+                    base = self.resolve_cs(obj[1], resources, depth + 1)
+                    return ColourSpace(base.kind, base.names, True)
+                if head == "/Separation":
+                    return ColourSpace("sep", (str(obj[1])[1:],))
+                if head == "/DeviceN":
+                    return ColourSpace("sep", tuple(str(n)[1:] for n in obj[1]))
+                if head == "/Pattern":
+                    return PATTERN
+                if head in _DEVICE:
+                    return _DEVICE[head]
+        except Exception:
+            pass
+        return UNKNOWN
+
+    # ---- events --------------------------------------------------------
+    def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None):
+        if cs is None:
+            cs, colour, pat = (st.fcs, st.fcol, st.fpat) if paint == "fill" else (st.scs, st.scol, st.spat)
+            if cs.kind == "pattern":
+                self._emit_pattern(pat, paint, st, bbox, resources, located)
+                return
+        overprint = st.op_fill if paint == "fill" else st.op_stroke
+        self.out.events.append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
+                                     parts if located else None))
+
+    def _emit_pattern(self, pat_name, paint, st, bbox, resources, located):
+        try:
+            pattern = resources["/Pattern"][str(pat_name)]
+            ptype = int(pattern.get("/PatternType", 0))
+            if ptype == 2:
+                cs = self.resolve_cs(pattern["/Shading"].get("/ColorSpace"), resources)
+                self.out.events.append(Event("shading", paint, cs, None, bbox if located else None,
+                                             st.op_fill if paint == "fill" else st.op_stroke, st.opm))
+                return
+            if ptype == 1:
+                # Tiling pattern: walk its cell; positions inside it are not page positions.
+                sub = _State()
+                sub.op_fill, sub.op_stroke, sub.opm = st.op_fill, st.op_stroke, st.opm
+                self._walk(pattern, pattern.get("/Resources", resources), sub, 1, located=False)
+                return
+        except Exception:
+            pass
+        self.out.problems["pattern fill could not be read"] += 1
+
+    # ---- main loop -----------------------------------------------------
+    def run(self) -> PageContent:
+        resources = self.page.obj.get("/Resources")
+        if resources is None:
+            try:
+                resources = self.page.resources
+            except Exception:
+                resources = pikepdf.Dictionary()
+        self._walk(self.page, resources, _State(), 0, located=True)
+        return self.out
+
+    def _walk(self, stream, resources, st, depth, located):
+        try:
+            instructions = pikepdf.parse_content_stream(stream)
+        except Exception:
+            self.out.problems["content stream could not be parsed"] += 1
+            return
+        stack = []
+        subs: list = []  # current path as a list of subpaths; points already in page space
+
+        def box_of(points):
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            return (min(xs), min(ys), max(xs), max(ys))
+
+        def path_bbox():
+            pts = [p for sub in subs for p in sub]
+            return box_of(pts) if pts else None
+
+        def path_parts():
+            if len(subs) < 2 or len(subs) > 5000:
+                return None
+            return [box_of(sub) for sub in subs if sub]
+
+        for ins in instructions:
+            op = str(ins.operator)
+            operands = ins.operands
+            try:
+                if op == "q":
+                    stack.append(st.copy())
+                elif op == "Q":
+                    if stack:
+                        st = stack.pop()
+                elif op == "cm":
+                    m = _nums(operands)
+                    if len(m) == 6:
+                        st.ctm = mat_mul(m, st.ctm)
+                # --- path construction
+                elif op == "m":
+                    v = _nums(operands)
+                    subs.append([mat_apply(st.ctm, v[0], v[1])])
+                elif op == "l":
+                    v = _nums(operands)
+                    if not subs:
+                        subs.append([])
+                    subs[-1].append(mat_apply(st.ctm, v[0], v[1]))
+                elif op in ("c", "v", "y"):
+                    v = _nums(operands)
+                    if not subs:
+                        subs.append([])
+                    for i in range(0, len(v) - 1, 2):
+                        subs[-1].append(mat_apply(st.ctm, v[i], v[i + 1]))
+                elif op == "re":
+                    x, y, w, h = _nums(operands)
+                    subs.append([mat_apply(st.ctm, px_, py_) for px_, py_ in ((x, y), (x + w, y), (x + w, y + h), (x, y + h))])
+                # --- path painting
+                elif op in ("f", "F", "f*"):
+                    self._emit("path", "fill", st, path_bbox(), resources, located, parts=path_parts())
+                    subs = []
+                elif op in ("S", "s"):
+                    self._emit("path", "stroke", st, path_bbox(), resources, located, parts=path_parts())
+                    subs = []
+                elif op in ("B", "B*", "b", "b*"):
+                    bb, parts = path_bbox(), path_parts()
+                    self._emit("path", "fill", st, bb, resources, located, parts=parts)
+                    self._emit("path", "stroke", st, bb, resources, located, parts=parts)
+                    subs = []
+                elif op == "n":
+                    subs = []
+                # --- colour
+                elif op == "g":
+                    st.fcs, st.fcol, st.fpat = GRAY, _nums(operands), None
+                elif op == "G":
+                    st.scs, st.scol, st.spat = GRAY, _nums(operands), None
+                elif op == "rg":
+                    st.fcs, st.fcol, st.fpat = RGB, _nums(operands), None
+                elif op == "RG":
+                    st.scs, st.scol, st.spat = RGB, _nums(operands), None
+                elif op == "k":
+                    st.fcs, st.fcol, st.fpat = CMYK, _nums(operands), None
+                elif op == "K":
+                    st.scs, st.scol, st.spat = CMYK, _nums(operands), None
+                elif op == "cs":
+                    st.fcs, st.fcol, st.fpat = self.resolve_cs(operands[0], resources), None, None
+                    if st.fcs.kind == "unknown":
+                        self.out.problems["colour space could not be read"] += 1
+                elif op == "CS":
+                    st.scs, st.scol, st.spat = self.resolve_cs(operands[0], resources), None, None
+                    if st.scs.kind == "unknown":
+                        self.out.problems["colour space could not be read"] += 1
+                elif op in ("sc", "scn"):
+                    st.fcol = _nums(operands)
+                    st.fpat = operands[-1] if operands and isinstance(operands[-1], pikepdf.Name) else None
+                elif op in ("SC", "SCN"):
+                    st.scol = _nums(operands)
+                    st.spat = operands[-1] if operands and isinstance(operands[-1], pikepdf.Name) else None
+                # --- graphics state
+                elif op == "gs":
+                    g = resources["/ExtGState"][str(operands[0])]
+                    if "/OP" in g:
+                        st.op_stroke = bool(g["/OP"])
+                        if "/op" not in g:
+                            st.op_fill = bool(g["/OP"])
+                    if "/op" in g:
+                        st.op_fill = bool(g["/op"])
+                    if "/OPM" in g:
+                        st.opm = int(g["/OPM"])
+                    if "/BM" in g:
+                        bm = g["/BM"]
+                        if isinstance(bm, pikepdf.Array):
+                            bm = bm[0] if len(bm) else pikepdf.Name("/Normal")
+                        bm = str(bm)[1:]
+                        if bm not in ("Normal", "Compatible"):
+                            self.out.blend_modes.add(bm)
+                # --- text
+                elif op == "BT":
+                    st.tm = st.tlm = IDENTITY
+                elif op == "Tf":
+                    st.fsize = float(operands[1])
+                elif op == "TL":
+                    st.leading = float(operands[0])
+                elif op == "Tr":
+                    st.tr = int(operands[0])
+                elif op in ("Td", "TD"):
+                    tx, ty = _nums(operands)
+                    if op == "TD":
+                        st.leading = -ty
+                    st.tlm = mat_mul((1, 0, 0, 1, tx, ty), st.tlm)
+                    st.tm = st.tlm
+                elif op == "Tm":
+                    m = _nums(operands)
+                    if len(m) == 6:
+                        st.tm = st.tlm = m
+                elif op == "T*":
+                    st.tlm = mat_mul((1, 0, 0, 1, 0, -st.leading), st.tlm)
+                    st.tm = st.tlm
+                elif op in ("Tj", "TJ", "'", '"'):
+                    if op in ("'", '"'):
+                        st.tlm = mat_mul((1, 0, 0, 1, 0, -st.leading), st.tlm)
+                        st.tm = st.tlm
+                    self._show_text(operands[-1], st, resources, located)
+                # --- shading, images, forms
+                elif op == "sh":
+                    sh = resources["/Shading"][str(operands[0])]
+                    cs = self.resolve_cs(sh.get("/ColorSpace"), resources)
+                    self.out.events.append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm))
+                elif op == "INLINE IMAGE":
+                    self._inline_image(operands[0], st, resources, located)
+                elif op == "Do":
+                    self._do(operands[0], st, resources, depth, located)
+            except Exception:
+                self.out.problems[f"operator '{op}' could not be interpreted"] += 1
+
+    def _show_text(self, operand, st, resources, located):
+        if st.tr in (3, 7):
+            return
+        # No font metrics are read, so the position is a one-em box at the point
+        # where this run of text starts on its line. Good enough to say which
+        # part of the page it is in; not a measured outline.
+        fs = st.fsize or 1.0
+        m = mat_mul(st.tm, st.ctm)
+        corners = [mat_apply(m, x, y) for x, y in ((0, -0.2 * fs), (fs, -0.2 * fs), (fs, 0.8 * fs), (0, 0.8 * fs))]
+        bbox = (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
+        if st.tr in (0, 2, 4, 6):
+            self._emit("text", "fill", st, bbox, resources, located)
+        if st.tr in (1, 2, 5, 6):
+            self._emit("text", "stroke", st, bbox, resources, located)
+
+    def _image_geometry(self, st, w, h):
+        corners = [mat_apply(st.ctm, x, y) for x, y in ((0, 0), (1, 0), (1, 1), (0, 1))]
+        bbox = (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
+        side_u = math.hypot(st.ctm[0], st.ctm[1])
+        side_v = math.hypot(st.ctm[2], st.ctm[3])
+        ppi = None
+        if side_u > 1e-6 and side_v > 1e-6 and w and h:
+            ppi = min(w / (side_u / 72.0), h / (side_v / 72.0))
+        return bbox, ppi
+
+    def _inline_image(self, img, st, resources, located):
+        try:
+            w, h = int(img.width), int(img.height)
+            is_mask = bool(img.image_mask)
+        except Exception:
+            self.out.problems["inline image could not be read"] += 1
+            return
+        bbox, ppi = self._image_geometry(st, w, h)
+        if is_mask:
+            self._emit("imagemask", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi)
+            return
+        try:
+            cs = self.resolve_cs(pikepdf.Name(str(img.colorspace)), resources)
+        except Exception:
+            cs = UNKNOWN
+        self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs)
+
+    def _do(self, name, st, resources, depth, located):
+        xobj = resources["/XObject"][str(name)]
+        subtype = str(xobj.get("/Subtype"))
+        if subtype == "/Image":
+            w, h = int(xobj.get("/Width", 0)), int(xobj.get("/Height", 0))
+            bbox, ppi = self._image_geometry(st, w, h)
+            if bool(xobj.get("/ImageMask", False)):
+                self._emit("imagemask", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi)
+            else:
+                cs = self.resolve_cs(xobj.get("/ColorSpace"), resources)
+                if cs.kind == "unknown":
+                    self.out.problems["image colour space could not be read"] += 1
+                self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs)
+        elif subtype == "/Form":
+            key = xobj.objgen
+            if depth >= MAX_DEPTH or key in self._active:
+                self.out.problems["nested form too deep to follow"] += 1
+                return
+            sub = st.copy()
+            m = xobj.get("/Matrix")
+            if m is not None:
+                mv = _nums(m)
+                if len(mv) == 6:
+                    sub.ctm = mat_mul(mv, st.ctm)
+            self._active.add(key)
+            try:
+                self._walk(xobj, xobj.get("/Resources", resources), sub, depth + 1, located)
+            finally:
+                self._active.discard(key)
+
+
+def walk_page(page: pikepdf.Page) -> PageContent:
+    return PageWalker(page).run()

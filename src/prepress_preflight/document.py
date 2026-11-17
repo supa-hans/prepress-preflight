@@ -1,0 +1,78 @@
+"""Open a PDF read-only and expose page geometry."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import pikepdf
+import pymupdf
+
+from .model import Box, mm
+
+# Preserve the file's own CMYK values when rendering for ink coverage. With
+# colour management on, MuPDF converts CMYK through profiles and the numbers
+# no longer match what is in the file.
+pymupdf.TOOLS.set_icc(False)
+
+
+def _box(arr) -> Box:
+    v = [float(x) for x in arr]
+    return Box(min(v[0], v[2]), min(v[1], v[3]), max(v[0], v[2]), max(v[1], v[3]))
+
+
+def _rotation(node) -> int:
+    """/Rotate is inherited from parent page-tree nodes."""
+    for _ in range(50):
+        if "/Rotate" in node:
+            return int(node["/Rotate"]) % 360
+        if "/Parent" not in node:
+            break
+        node = node["/Parent"]
+    return 0
+
+
+@dataclass
+class PageInfo:
+    number: int  # 1-based
+    obj: pikepdf.Page
+    media: Box
+    trim: Box
+    bleed: Box
+    has_trim: bool
+    has_bleed: bool
+    rotate: int
+    unit: float = 1.0  # UserUnit: size of one page unit in 1/72 inch
+
+    def mm(self, units: float) -> float:
+        """Convert a length in page units to millimetres."""
+        return mm(units * self.unit)
+
+    @property
+    def trim_size_mm(self) -> tuple[float, float]:
+        w, h = self.mm(self.trim.width), self.mm(self.trim.height)
+        return (h, w) if self.rotate in (90, 270) else (w, h)
+
+    @property
+    def print_area(self) -> Box:
+        """The larger of trim and bleed: where printed artwork lives."""
+        return Box(min(self.trim.x0, self.bleed.x0), min(self.trim.y0, self.bleed.y0),
+                   max(self.trim.x1, self.bleed.x1), max(self.trim.y1, self.bleed.y1))
+
+
+class Document:
+    def __init__(self, path: str):
+        self.path = path
+        self.pdf = pikepdf.open(path)  # read-only: nothing here ever saves
+        self.mu = pymupdf.open(path)
+        self.pages: list[PageInfo] = []
+        for i, page in enumerate(self.pdf.pages, 1):
+            unit = float(page.obj.get("/UserUnit", 1))
+            media = _box(page.mediabox)
+            has_trim = "/TrimBox" in page.obj
+            has_bleed = "/BleedBox" in page.obj
+            trim = _box(page.trimbox)
+            bleed = _box(page.obj["/BleedBox"]) if has_bleed else trim
+            self.pages.append(PageInfo(i, page, media, trim, bleed, has_trim, has_bleed, _rotation(page.obj), unit))
+
+    def close(self):
+        self.mu.close()
+        self.pdf.close()

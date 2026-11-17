@@ -1,0 +1,11 @@
+# Client artwork never goes into version control.
+samples/
+*.pdf
+!tests/fixtures/*.pdf
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+.DS_Store
