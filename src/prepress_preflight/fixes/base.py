@@ -24,10 +24,11 @@ class Proposal:
     changes: list = field(default_factory=list)
     reasons: list = field(default_factory=list)  # one line per page explaining why
     skipped: list = field(default_factory=list)  # pages left alone, and why
+    plan: dict = field(default_factory=dict)  # fix-specific details the write step needs, by page
 
     @property
     def empty(self) -> bool:
-        return not self.changes
+        return not self.changes and not self.plan
 
 
 def size_text(box) -> str:

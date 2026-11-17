@@ -17,6 +17,7 @@ from .cli_common import parse_trim
 from .engine import run
 from .fixes import FIXES
 from .model import FAIL, UNCHECKED, WARN
+from .report import page_list
 
 
 def _summary(result) -> set:
@@ -36,19 +37,36 @@ def _preview(proposal, options, write) -> tuple:
     return before, after
 
 
-def _print_proposal(proposal) -> None:
+HEADERS = {
+    "add-bleed": "Proposed changes (the original artwork is not changed; new bleed images are added beneath it, "
+                 "outside the trim):",
+}
+
+
+def _grouped(items, total):
+    """Collapse identical lines that differ only by page: {text: [pages]} in first-seen order."""
+    groups: dict = {}
+    for page, text in items:
+        groups.setdefault(text, []).append(page)
+    return [(page_list(pages, total), text) for text, pages in groups.items()]
+
+
+def _print_proposal(proposal, total) -> None:
     print(f"FIX  {proposal.fix}  {os.path.basename(proposal.path)}")
-    for page, reason in proposal.reasons:
-        print(f"  page {page}: {reason}")
-    for page, why in proposal.skipped:
-        print(f"  page {page}: left alone, {why}")
+    for where, reason in _grouped(proposal.reasons, total):
+        print(f"  {where}: {reason}")
+    for where, why in _grouped(proposal.skipped, total):
+        print(f"  {where}: left alone, {why}")
     if proposal.empty:
         print("\nNothing to change.")
         return
-    print("\nProposed changes (nothing else in the file is touched):")
+    print("\n" + HEADERS.get(proposal.fix, "Proposed changes (nothing else in the file is touched):"))
+    lines = []
     for c in proposal.changes:
         old = "not set" if c.before is None else f"{c.before_mm}  {c.before}"
-        print(f"  page {c.page}  {c.box}\n      before: {old}\n      after:  {c.after_mm}  {c.after}")
+        lines.append((c.page, f"{c.box}\n      before: {old}\n      after:  {c.after_mm}  {c.after}"))
+    for where, text in _grouped(lines, total):
+        print(f"  {where}  {text}")
 
 
 def _print_effect(before, after) -> None:
@@ -69,6 +87,12 @@ def _print_effect(before, after) -> None:
         print("  no change to fails or warnings")
 
 
+def _page_count(path) -> int:
+    import pikepdf
+    with pikepdf.open(path) as pdf:
+        return len(pdf.pages)
+
+
 def main(argv) -> int:
     parser = argparse.ArgumentParser(prog="preflight fix",
                                      description="Propose a fix, and write it to a new file only when asked.")
@@ -78,17 +102,20 @@ def main(argv) -> int:
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
     parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes: the job's trim size in mm, e.g. 850x2000")
     parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="bleed to give the new bleed box (default 3)")
+    parser.add_argument("--method", choices=("mirror", "stretch"), default="mirror",
+                        help="add-bleed: reflect the edge outward (default), or repeat its last row of pixels")
+    parser.add_argument("--bound", action="store_true", help="bound job: spine edges need no bleed")
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
     args = parser.parse_args(argv)
 
-    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim)
+    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim, bound=args.bound)
     propose, write = FIXES[args.name]
     try:
-        proposal = propose(args.file, options)
+        proposal = propose(args.file, options, method=args.method)
     except Exception as exc:
         print(f"preflight fix: could not read {args.file}: {exc}", file=sys.stderr)
         return 2
-    _print_proposal(proposal)
+    _print_proposal(proposal, _page_count(args.file))
     if proposal.empty:
         return 0
     if args.write and os.path.exists(args.write):
@@ -117,6 +144,5 @@ def main(argv) -> int:
         print(f"preflight fix: nothing written: {exc}", file=sys.stderr)
         return 2
     print(f"Written and verified: {args.write}")
-    print("  The original's bytes are unchanged at the start of the new file; only the changed page")
-    print("  dictionaries were added after them.")
+    print("  The original's bytes are unchanged at the start of the new file; the changes were added after them.")
     return 0

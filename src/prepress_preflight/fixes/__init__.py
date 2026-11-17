@@ -5,12 +5,14 @@ produces a Proposal saying exactly what would change, so the user can confirm
 it, and the write is verified before the new file is put in place.
 """
 from .base import Proposal
+from .add_bleed import propose_add_bleed, write_add_bleed
 from .set_boxes import propose_set_boxes, write_set_boxes
 from .trim_from_marks import propose_trim_from_marks, write_trim_from_marks
 
 FIXES = {
     "trim-from-marks": (propose_trim_from_marks, write_trim_from_marks),
     "set-boxes": (propose_set_boxes, write_set_boxes),
+    "add-bleed": (propose_add_bleed, write_add_bleed),
 }
 
 __all__ = ["FIXES", "Proposal"]

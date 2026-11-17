@@ -44,17 +44,20 @@ and write a new file only when asked and confirmed.
 preflight fix trim-from-marks banner.pdf                      # show the proposal and its effect
 preflight fix trim-from-marks banner.pdf --write banner-fixed.pdf   # write it, after you type yes
 preflight fix set-boxes flyer.pdf --trim 210x297                   # set the trim to A4 and a 3 mm bleed box
+preflight fix add-bleed canva.pdf --write canva-bleed.pdf           # make 3 mm of bleed where the artwork stops at the trim
 ```
 
 | Fix | What it changes |
 | --- | --- |
 | trim-from-marks | Sets the trim box to where the crop marks point, and the bleed box to that plus 3 mm (`--min-bleed`). Nothing else. |
+| add-bleed | Makes bleed where artwork stops at the trim: the edge is mirrored outward (`--method stretch` repeats it instead) as an image beneath the artwork, outside the trim, and the page grows to hold it. The artwork inside the trim is proved unchanged. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
-The new file is the original, byte for byte, with the changed page
-dictionaries appended (a PDF incremental update, as Acrobat's Save does). It
-is verified before it is put in place: original bytes intact, structure sound,
-only the intended objects changed.
+The new file is the original, byte for byte, with the changes appended (a PDF
+incremental update, as Acrobat's Save does). It is verified before it is put
+in place: original bytes intact, structure sound, only the intended objects
+changed, and for add-bleed, the artwork inside the trim renders exactly as
+before.
 
 ## Checks
 

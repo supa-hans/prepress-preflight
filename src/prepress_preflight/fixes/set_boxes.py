@@ -29,7 +29,7 @@ def _same(a, b) -> bool:
     return all(abs(x - y) < 0.01 for x, y in zip(a, b))
 
 
-def propose_set_boxes(path: str, options: Options | None = None) -> Proposal:
+def propose_set_boxes(path: str, options: Options | None = None, **_) -> Proposal:
     """What the fix would change. Reads only."""
     options = options or Options()
     proposal = Proposal(NAME, path)

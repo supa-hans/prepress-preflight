@@ -17,7 +17,7 @@ from .base import Proposal, box_change, size_text, write_box_changes
 NAME = "trim-from-marks"
 
 
-def propose_trim_from_marks(path: str, options: Options | None = None) -> Proposal:
+def propose_trim_from_marks(path: str, options: Options | None = None, **_) -> Proposal:
     """What the fix would change. Reads only."""
     options = options or Options()
     proposal = Proposal(NAME, path)

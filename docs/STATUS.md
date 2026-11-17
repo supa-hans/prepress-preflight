@@ -288,6 +288,54 @@ bleed. Rules learned from the samples:
 On the samples, only the wobblers file gets a change: a 3 mm bleed box where
 there was none, which clears its "Bleed box not defined" warning.
 
+## Third fix: add bleed (added 2026-11-18)
+
+Approved as proposed. `preflight fix add-bleed file.pdf [--method mirror|stretch]
+[--min-bleed MM] [--bound]`. For each edge where artwork reaches the trim
+without bleed, the strip just inside the trim is rendered (300 ppi, 150 ppi
+for pages over 1 m) in the edge artwork's own colour space, reflected outward,
+and placed as an image beneath the original artwork, clipped to outside the
+trim. The page grows where it has no room; the old size becomes the TrimBox
+and the BleedBox is trim + 3 mm. The original content stream is untouched.
+
+Learned while building it, all now handled and tested:
+
+- **Overshoot.** Bleed made to exactly 3 mm read as 2.7 mm on the check's pixel
+  grid, so the made bleed runs 1 mm past the bleed box (4 mm in all).
+- **Thin edge artwork.** A border or bar narrower than the bleed mirrors to a
+  narrow band and then white (X-am right edge). Where the mirror would leave a
+  gap, the colour at the trim is carried on instead.
+- **Artwork stopping a hair short.** The pixel at the trim straddles the cut,
+  and artwork often stops just short, so the carried colour is taken from the
+  nearest ink within 1 mm of the trim.
+- **A white sliver inside the trim cannot be fixed by bleed.** Little Stars
+  pages 12 and 13 have a pale shape stopping about 0.3 mm short of the trim
+  for 1.2 mm; a hairline of white may show after cutting. The fix must not
+  touch artwork inside the trim, so up to 2 mm of such near-misses per edge is
+  accepted and stays visible as a Bleed artwork fail in the report.
+- **File size.** Identical bleed strips are stored once and shared between
+  pages: the place cards went from 62 MB to 3.2 MB (original 2.4 MB).
+
+Verification before the new file is put in place, on top of the append
+checks: the area inside the trim must render identically before and after
+(ignoring the one row of pixels that straddles the cut), and every filled
+edge must pass the Bleed artwork check.
+
+Results: place cards FAIL -> PASS. Little Stars: no-bleed fail on every page
+-> a 1 mm near-miss on pages 12 and 13 (still FAIL for that, and RGB as
+before; the bleed strips are RGB to match the artwork, so the RGB image count
+rises). X-am posters: bleed fixed, still FAIL for 400% ink. Catalogue: only
+its six spine-side pages would be filled, and none with `--bound`.
+
+On screen, Preview and Acrobat may show a hairline where the bleed image meets
+the artwork at the trim. It is anti-aliasing in the viewer, not ink: sampled
+values on both sides of the trim match the original.
+
+Bug found on the way: pikepdf's structure check, run on a linearised file,
+leaves the process silently discarding everything written to stderr. Error
+messages from the fix command vanished. The check now runs in a separate
+process.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -302,7 +350,7 @@ there was none, which clears its "Bleed box not defined" warning.
    disagreement.
 5. Later checks: none outstanding from the original list.
 6. Later phases: adding trim marks and scaling (both change artwork, so
-   propose first); bleed fixes (Canva files need artwork extended, not boxes); spot colour
+   propose first); a fix for the banner's Multiply fault (parked by the owner); spot colour
    tools; action lists; desktop interface; object tree and editing.
 
 ## Interface model (for later)
