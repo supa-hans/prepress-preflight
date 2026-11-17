@@ -21,10 +21,13 @@ class PageSizeCheck(Check):
         super().__init__(doc, options)
         self.sizes: list[tuple[int, tuple[float, float]]] = []
         self.no_trim: list[int] = []
+        self.inferred: list[int] = []
 
     def page(self, page, content):
         self.sizes.append((page.number, page.trim_size_mm))
-        if not page.has_trim:
+        if page.trim_inferred:
+            self.inferred.append(page.number)
+        elif not page.has_trim:
             self.no_trim.append(page.number)
 
     def finish(self):
@@ -43,6 +46,8 @@ class PageSizeCheck(Check):
         else:
             for size, pages in groups.items():
                 self.add(WARN, f"Pages have different trim sizes: {_fmt(size)}", pages)
+        if self.inferred:
+            self.add(NOTE, "Trim size inferred from the crop marks, not taken from the file's trim box", self.inferred)
         if self.no_trim:
             self.add(NOTE, "No trim box defined; the full page size is treated as the trim", self.no_trim)
         exp = self.options.expected_trim_mm

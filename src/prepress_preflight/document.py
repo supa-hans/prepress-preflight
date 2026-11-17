@@ -41,6 +41,12 @@ class PageInfo:
     has_bleed: bool
     rotate: int
     unit: float = 1.0  # UserUnit: size of one page unit in 1/72 inch
+    # Set by marks.infer_trim. When the crop marks disagree with the trim box,
+    # `trim` holds the rectangle the marks point at and `declared_trim` the
+    # file's own box.
+    marks_trim: Box | None = None
+    declared_trim: Box | None = None
+    trim_inferred: bool = False
 
     def mm(self, units: float) -> float:
         """Convert a length in page units to millimetres."""

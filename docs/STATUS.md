@@ -21,7 +21,7 @@
 | Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
 | Font embedding | fail | A font used for visible text is not embedded |
-| Trim marks | warn | Crop marks point at a rectangle that differs from the trim box by more than 0.5 mm. A note when they agree |
+| Trim marks | warn | Crop marks point at a rectangle that differs from the trim box by more than 0.5 mm. The trim is then taken from the marks for every other check, and the report says so. A note when they agree |
 | Dielines | warn | A dieline (by spot name) is not set to overprint. Its size is reported as a note |
 | Annotations | warn | Annotations set to print (stamps, comments), or any form field. Links are ignored |
 | Annotations | note | Comments not set to print |
@@ -191,14 +191,24 @@ Trim marks: corner crop marks in registration colour are found from the page
 content and the rectangle they point at is compared with the trim box. Eight
 samples have marks that agree.
 
-**The banner's marks do not agree, and this matters.** Its crop marks point at
-845.0 × 2100.0 mm, 7.4 mm inside the 859.8 × 2114.8 mm trim box (which equals
-the page). So the trim box is almost certainly wrong, the artwork probably has
-7.4 mm of bleed, and the banner's two "no bleed" fails and its "registration
-inside trim" fail all follow from the wrong box, not from the artwork. The
-owner's original verdict for the banner was a Bleed box warn, which fits.
-**Question for the owner:** when marks and trim box disagree, should the tool
-measure from the marks? Until decided it measures from the trim box and warns.
+**The banner's marks do not agree with its trim box.** Its crop marks point at
+845.0 × 2100.0 mm, 7.4 mm inside the 859.8 × 2114.8 mm trim box (which is just
+the page). Measured from the box, the banner failed on bleed twice and on
+registration inside the trim; all three came from the wrong box.
+
+Owner's decision (2026-11-17): when marks and trim box disagree, measure from
+the marks, and tell the user the trim was inferred. The engine does this before
+any check runs (`marks.infer_trim`). The report then carries a Trim marks
+warning ("Trim inferred from the crop marks: ... Bleed, margins, ink and
+registration are measured from the marks") and a Page size note. The file's own
+box is kept as `page.declared_trim`. Marks that point outside the page are
+ignored.
+
+The banner now has one fail, the Multiply fault, plus the Trim marks warning.
+Its entry in `expected.json` was corrected to match (previous file kept as
+`samples/expected.before-trim-from-marks.json`). The owner's first verdict for
+the banner, before the original file came in, was a bleed warn and not a fail,
+which fits.
 
 Dielines: the wobblers file has a dieline of 148.0 × 208.0 mm inside an A4
 trim box, set to overprint. The size is the outer bounds of the dieline
@@ -216,8 +226,7 @@ objects, not a measured cutting path.
    default stays at 400% as a placeholder.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
-5. **Decide what to measure from when trim marks and trim box disagree** (the
-   banner). Then correct the banner's entry in `expected.json` to match.
+5. Later checks: none outstanding from the original list.
 6. Later phases: page boxes, trim marks and scaling; bleed fixes; spot colour
    tools; action lists; desktop interface; object tree and editing.
 

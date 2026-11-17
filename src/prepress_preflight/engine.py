@@ -6,6 +6,7 @@ from collections import Counter
 from .checks import ALL_CHECKS, Options
 from .content import walk_page
 from .document import Document
+from .marks import infer_trim
 from .model import FAIL, NOTE, UNCHECKED, WARN, Finding, merge
 
 
@@ -51,6 +52,10 @@ def run(path: str, options: Options | None = None) -> Result:
         problems: dict[str, set] = {}
         for page in doc.pages:
             content = walk_page(page.obj)
+            # Before any check measures anything: if the crop marks disagree
+            # with the trim box, the marks are taken as the trim. The Trim
+            # marks check reports that this was done.
+            infer_trim(page, content, options.size_tolerance_mm)
             for text in content.problems:
                 problems.setdefault(text, set()).add(page.number)
             for check in checks:

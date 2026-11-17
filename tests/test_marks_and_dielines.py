@@ -49,7 +49,35 @@ def test_marks_of_the_right_size_in_the_wrong_place_say_so(make):
 
 def test_marks_show_the_trim_when_no_trim_box_is_defined(make):
     f = found(run(make(K_BOX + b" " + crop_marks(TRIM), colorspace=REG, trim=None, bleed=None)), "Trim marks", WARN)
-    assert f and "100.0 × 60.0 mm" in f[0].message and "no trim box is defined" in f[0].message
+    assert f and "100.0 × 60.0 mm" in f[0].message and "no trim box" in f[0].message
+
+
+def test_report_says_the_trim_was_inferred_from_the_marks(make):
+    result = run(make(K_BOX + b" " + crop_marks(TRIM), colorspace=REG, trim=None, bleed=None))
+    f = found(result, "Trim marks", WARN)
+    assert f and "inferred from the crop marks" in f[0].message and "measured from the marks" in f[0].message
+    size = found(result, "Page size", NOTE)
+    assert any("100.0 × 60.0 mm" in x.message for x in size)
+    assert any("inferred from the crop marks" in x.message for x in size)
+
+
+def test_other_checks_measure_from_the_marks_when_the_trim_box_is_wrong(make):
+    # The pull-up banner: the trim box is just the page, the crop marks sit
+    # inside it, and the artwork runs to the page edge. Measured from the
+    # marks there is plenty of bleed and the marks are not "inside the trim".
+    marks = crop_marks(TRIM, offset=1 * MM, length=6 * MM)
+    content = b"0 0 0 1 k " + rect(MEDIA) + b"f " + marks
+    result = run(make(content, colorspace=REG, trim=MEDIA, bleed=MEDIA))
+    assert found(result, "Trim marks", WARN)
+    assert not found(result, "Bleed artwork", "fail") and not found(result, "Bleed box", "fail")
+    assert not found(result, "Registration inside trim", "fail")
+
+
+def test_marks_that_agree_leave_the_trim_box_alone(make):
+    # Artwork stops at the trim: still a bleed fail, with nothing inferred.
+    result = run(make(b"0 0 0 1 k " + rect(TRIM) + b"f " + crop_marks(TRIM), colorspace=REG))
+    assert found(result, "Bleed artwork", "fail")
+    assert not any("inferred" in f.message for f in result.findings)
 
 
 def test_bleed_marks_do_not_confuse_the_trim(make):
