@@ -206,7 +206,7 @@ def test_existing_marks_are_replaced_not_doubled(make, tmp_path):
     reg = {"/CS0": registration_space()}
     src = make(FULL_K + b" " + crop_marks(PAGE, offset=6 * MM, length=3 * MM), media=MEDIA, trim=PAGE, bleed=None,
                colorspace=reg)
-    p = propose(src, marks=True)
+    p = propose(src, marks=True, clip=True)
     assert p.plan[1]["remove"] and "in place of the existing ones" in p.reasons[0][1]
     dst = str(tmp_path / "bled.pdf")
     write(p, dst)
@@ -223,7 +223,8 @@ def test_marks_inside_a_placed_graphic_leave_the_page_alone(make):
                                BBox=list(MEDIA), Resources=pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(
                                    {"/CS0": registration_space()})))
     src = make(FULL_K + b" /Fm0 Do", media=MEDIA, trim=PAGE, bleed=None, xobject={"/Fm0": form})
-    p = propose(src, marks=True)
+    assert "Keeps its existing trim marks" in propose(src, marks=True).reasons[0][1]  # no clip: kept as they are
+    p = propose(src, marks=True, clip=True)  # a clip would cut them off, and they cannot be taken out
     assert p.empty and "placed graphic" in p.skipped[0][1]
 
 
@@ -261,3 +262,52 @@ def test_command_takes_clip_and_marks(make, capsys):
     assert main(["fix", "add-bleed", no_bleed(make), "--clip-to-bleed", "--marks", "--no-preview"]) == 0
     out = capsys.readouterr().out
     assert "Clips everything on the page to the bleed box" in out and "Adds trim marks" in out
+
+
+# --- add-marks: marks only, no bleed made
+propose_marks = FIXES["add-marks"][0]
+
+
+def test_add_marks_does_not_make_bleed(make, tmp_path):
+    p = propose_marks(no_bleed(make))
+    assert not p.plan[1]["edges"] and "Adds trim marks" in p.reasons[0][1] and "bleed on" not in p.reasons[0][1]
+    dst = str(tmp_path / "marked.pdf")
+    write(p, dst)
+    assert len(mark_set(dst)[0]) == 4
+    assert fails(run(dst), "Bleed artwork")  # the missing bleed is still reported, not hidden
+
+
+def test_add_marks_on_a_file_that_bleeds(make, tmp_path):
+    src = make(b"0 0 0 1 k " + rect(MEDIA) + b"f", media=MEDIA, trim=PAGE)
+    dst = str(tmp_path / "marked.pdf")
+    write(propose_marks(src, clip=True), dst)
+    h, v, box = mark_set(dst)
+    assert len(h) == 4 and box == pytest.approx(list(PAGE), abs=0.05)
+    assert not fails(run(dst), "Bleed artwork")
+
+
+def test_add_marks_command(make, capsys):
+    from prepress_preflight.cli import main
+    assert main(["fix", "add-marks", no_bleed(make), "--no-preview"]) == 0
+    assert "trim marks are added outside the bleed box" in capsys.readouterr().out
+
+
+
+def test_existing_marks_are_kept_unless_clipping(make):
+    from test_fixes import crop_marks
+    reg = {"/CS0": registration_space()}
+    standard = crop_marks(PAGE, offset=2.1 * MM, length=5 * MM)  # as applications draw them: into a 3 mm bleed
+    src = make(b"0 0 0 1 k " + rect(MEDIA) + b"f " + standard, media=MEDIA, trim=PAGE, colorspace=reg)
+    p = propose_marks(src)
+    assert p.empty and "already has trim marks" in p.skipped[0][1]
+    p = propose_marks(src, clip=True)  # a clip would cut them to stubs, so they are replaced
+    assert p.plan[1]["marks"] and p.plan[1]["remove"] and "in place of the existing ones" in p.reasons[0][1]
+
+
+def test_add_bleed_keeps_existing_marks_without_a_clip(make):
+    from test_fixes import crop_marks
+    reg = {"/CS0": registration_space()}
+    src = make(FULL_K + b" " + crop_marks(PAGE, offset=6 * MM, length=3 * MM), media=MEDIA, trim=PAGE, bleed=None,
+               colorspace=reg)
+    p = propose(src, marks=True)
+    assert not p.plan[1]["marks"] and "Keeps its existing trim marks" in p.reasons[0][1]

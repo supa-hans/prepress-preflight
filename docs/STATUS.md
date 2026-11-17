@@ -376,6 +376,23 @@ of what the check can resolve. Whether it is reported depends on where the
 pixel grid falls, so it no longer shows. Slivers under about 0.3 mm are not
 reliably detected.
 
+## Fourth fix: add marks (added 2026-11-18)
+
+`preflight fix add-marks file.pdf [--clip-to-bleed]`: the same trim marks as
+`add-bleed --marks`, with no bleed made, for files that already bleed or need
+none. Missing bleed is left as it is and still reported.
+
+Existing marks that point at the trim are kept, not replaced like with like.
+Applications put marks about 2.1 mm from the trim, so they normally reach into
+a 3 mm bleed; that is standard. The exception is when clipping to the bleed box
+is asked for, since the clip would cut old marks down to stubs: then they are
+replaced, or the page is left alone if they are inside a placed graphic.
+The same rule now applies to `add-bleed --marks`.
+
+On the samples, only files without marks get them: place cards, A4 PBR,
+Oliver Hume, the yearbook, Little Stars and the X-am posters. The eight files
+with marks are left as they are.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

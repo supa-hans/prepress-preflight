@@ -40,6 +40,8 @@ def _preview(proposal, options, write) -> tuple:
 HEADERS = {
     "add-bleed": "Proposed changes (the original artwork inside the trim is not changed; bleed is added beneath it, "
                  "outside the trim, and any clip or trim marks asked for):",
+    "add-marks": "Proposed changes (the artwork is not changed; trim marks are added outside the bleed box, "
+                 "replacing any existing ones, and the clip if asked for):",
 }
 
 
@@ -106,7 +108,7 @@ def main(argv) -> int:
                         help="add-bleed: reflect the edge outward (default), or repeat its last row of pixels")
     parser.add_argument("--bound", action="store_true", help="bound job: spine edges need no bleed")
     parser.add_argument("--clip-to-bleed", action="store_true",
-                        help="add-bleed: clip everything on the page to the bleed box")
+                        help="add-bleed, add-marks: clip everything on the page to the bleed box")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")

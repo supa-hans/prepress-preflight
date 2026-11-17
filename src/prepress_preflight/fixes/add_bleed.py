@@ -108,7 +108,7 @@ def _old_marks(content, t: Box):
     Only registration-colour strokes whose every part is a thin straight line
     lying along a trim edge, outside the trim. Returns (removals in the page's
     own content as {position: ({"stroke"}, text render mode)}, number found
-    inside placed graphics).
+    inside placed graphics, the outline of every mark line found).
     """
     def is_mark(b):
         x0, y0, x1, y1 = b
@@ -120,22 +120,34 @@ def _old_marks(content, t: Box):
             return min(abs(x - t.x0), abs(x - t.x1)) <= 0.5 and (y1 <= t.y0 + 0.5 or y0 >= t.y1 - 0.5)
         return False
 
-    removals, nested = {}, 0
+    removals, nested, boxes = {}, 0, []
     for e in content.events:
         if e.paint != "stroke" or not e.cs.is_registration or e.bbox is None or e.loc is None:
             continue
         if not all(is_mark(b) for b in e.boxes()):
             continue
+        boxes.extend(e.boxes())
         names, idx, tr = e.loc
         if names:
             nested += 1
             continue
         removals.setdefault(idx, ({"stroke"}, tr))
-    return removals, nested
+    return removals, nested, boxes
+
+
+def propose_add_marks(path: str, options: Options | None = None, clip: bool = False, **_) -> Proposal:
+    """Trim marks only, with no bleed made: for files that already bleed.
+
+    The same marks and checks as add-bleed --marks. Edges that lack bleed are
+    left as they are (the Bleed artwork check still reports them).
+    """
+    proposal = propose_add_bleed(path, options, clip=clip, marks=True, fill=False)
+    proposal.fix = "add-marks"
+    return proposal
 
 
 def propose_add_bleed(path: str, options: Options | None = None, method: str = "mirror",
-                      clip: bool = False, marks: bool = False, **_) -> Proposal:
+                      clip: bool = False, marks: bool = False, fill: bool = True, **_) -> Proposal:
     """What the fix would change. Reads only."""
     options = options or Options()
     if method not in ("mirror", "stretch"):
@@ -158,7 +170,7 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
                 continue
             scan = scan_edges(doc, page, content, need_mm)
             skip = spine_edge(page.number) if options.bound else None
-            wanted = [n for n in EDGES if scan.edges[n].short_mm > 0 and n != skip]
+            wanted = [n for n in EDGES if scan.edges[n].short_mm > 0 and n != skip] if fill else []
             if not wanted and not (clip or marks):
                 continue
             edges, notes, refused = {}, [], []
@@ -171,26 +183,37 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
                 if note:
                     notes.append(f"{name}: {note}")
             if refused:
-                proposal.skipped.append((page.number, "left alone because " + "; ".join(refused)))
+                proposal.skipped.append((page.number, "because " + "; ".join(refused)))
                 continue
-            removals = {}
-            if marks:
-                removals, nested = _old_marks(content, t)
-                if nested:
-                    proposal.skipped.append((page.number, "left alone because its existing crop marks are inside a "
-                                                          "placed graphic, so they cannot be replaced"))
-                    continue
-            # Grow the page only where it has less room than needed: the bleed,
-            # the overshoot on edges being filled, and the marks if asked for.
             depth = need + OVERSHOOT_MM * PT_PER_MM
             bleed = [t.x0 - need, t.y0 - need, t.x1 + need, t.y1 + need]
             if page.has_bleed:  # never shrink a bleed box that already gives more
                 b = page.bleed
                 bleed = [min(bleed[0], b.x0), min(bleed[1], b.y0), max(bleed[2], b.x1), max(bleed[3], b.y1)]
+            removals, page_marks, kept = {}, marks, False
+            if marks:
+                removals, nested, mark_boxes = _old_marks(content, t)
+                if found is not None and mark_boxes and not clip:
+                    # Marks already there and pointing at the trim: keep them
+                    # rather than replace like with like. (Applications put marks
+                    # about 2 mm from the trim, so they usually reach into a 3 mm
+                    # bleed; that is normal.) With a clip they would be cut down
+                    # to stubs, so then they are replaced.
+                    removals, page_marks, kept = {}, False, True
+                elif nested:
+                    proposal.skipped.append((page.number, "because its existing crop marks are inside a placed graphic, "
+                                                          "so they cannot be replaced, and clipping would cut them off"))
+                    continue
+            if not edges and not clip and not page_marks:
+                if kept:
+                    proposal.skipped.append((page.number, "it already has trim marks that point at the trim"))
+                continue
+            # Grow the page only where it has less room than needed: the bleed,
+            # the overshoot on edges being filled, and the marks if asked for.
             gap = {"left": t.x0 - bleed[0], "bottom": t.y0 - bleed[1], "right": bleed[2] - t.x1, "top": bleed[3] - t.y1}
             tail = (MARK_LENGTH_MM + SLUG_MARGIN_MM) * PT_PER_MM
             room = {"left": t.x0 - m.x0, "bottom": t.y0 - m.y0, "right": m.x1 - t.x1, "top": m.y1 - t.y1}
-            extent = {n: max(depth if n in edges else need, gap[n] + tail if marks else 0.0) for n in EDGES}
+            extent = {n: max(depth if n in edges else need, gap[n] + tail if page_marks else 0.0) for n in EDGES}
             grow = {n: max(0.0, extent[n] - room[n]) for n in EDGES}
             media = [m.x0 - grow["left"], m.y0 - grow["bottom"], m.x1 + grow["right"], m.y1 + grow["top"]]
             obj = page.obj.obj
@@ -205,7 +228,7 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
             dpi = LARGE_DPI if long_side > LARGE_MM else DPI
             proposal.plan[page.number] = {"edges": edges, "need": need, "depth": depth, "method": method, "dpi": dpi,
                                           "trim": t.as_list(), "bleed": bleed, "old_media": m.as_list(),
-                                          "new_media": media, "clip": clip, "marks": marks,
+                                          "new_media": media, "clip": clip, "marks": page_marks,
                                           "remove": {i: (sorted(p), tr) for i, (p, tr) in removals.items()}}
             parts = []
             if edges:
@@ -213,8 +236,10 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
                 parts.append(f"Adds {need_mm:g} mm of {method}ed bleed on {spaces} at {dpi} ppi.")
             if clip:
                 parts.append("Clips everything on the page to the bleed box.")
-            if marks:
+            if page_marks:
                 parts.append(f"Adds trim marks{' in place of the existing ones' if removals else ''}.")
+            elif kept:
+                parts.append("Keeps its existing trim marks, which already point at the trim.")
             if any(g > 0.01 for g in grow.values()):
                 parts.append("The page grows to make room; the trim is unchanged.")
             if notes:
