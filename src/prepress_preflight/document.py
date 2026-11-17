@@ -63,6 +63,8 @@ class Document:
         self.path = path
         self.pdf = pikepdf.open(path)  # read-only: nothing here ever saves
         self.mu = pymupdf.open(path)
+        self._scratch: dict = {}
+        self.cache: dict = {}  # results shared between checks
         self.pages: list[PageInfo] = []
         for i, page in enumerate(self.pdf.pages, 1):
             unit = float(page.obj.get("/UserUnit", 1))
@@ -73,6 +75,17 @@ class Document:
             bleed = _box(page.obj["/BleedBox"]) if has_bleed else trim
             self.pages.append(PageInfo(i, page, media, trim, bleed, has_trim, has_bleed, _rotation(page.obj), unit))
 
+    def scratch(self, purpose="default"):
+        """A second, in-memory handle on the file for checks that need to render
+        part of a page on its own. Its pages may be rearranged in memory; it is
+        never saved, and the file on disk is never written to. Each purpose gets
+        its own handle so one check's rearranging cannot affect another's."""
+        if purpose not in self._scratch:
+            self._scratch[purpose] = pymupdf.open(self.path)
+        return self._scratch[purpose]
+
     def close(self):
+        for handle in self._scratch.values():
+            handle.close()
         self.mu.close()
         self.pdf.close()

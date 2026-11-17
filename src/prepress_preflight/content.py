@@ -11,6 +11,8 @@ Known limits, stated so no check claims more than it knows:
     not what remains visible after clipping.
   * Text positions are approximate (no font metrics are read).
   * Optional content (layers) visibility is ignored; hidden layers are walked.
+  * Blend-mode objects inside pattern cells or knockout groups are only
+    counted (`nested_blends`), not recorded individually.
 """
 from __future__ import annotations
 
@@ -67,9 +69,10 @@ _DEVICE = {
 class Event:
     """One painted object."""
 
-    __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts")
+    __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width")
 
-    def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None):
+    def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
+                 width=None):
         self.kind = kind  # path | text | image | imagemask | shading
         self.paint = paint  # fill | stroke
         self.cs = cs
@@ -82,6 +85,11 @@ class Event:
         # A path can hold several separate shapes (all eight crop marks are often
         # one path). `parts` lists each shape's own bounding box when there are several.
         self.parts = parts
+        # Where the painting instruction is: (names of the forms leading to its
+        # stream, position in that stream, text render mode). None when it is
+        # inside a pattern cell.
+        self.loc = loc
+        self.width = width  # stroke weight in points as placed on the page, strokes only
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -90,15 +98,60 @@ class Event:
         return [self.bbox] if self.bbox is not None else []
 
 
+@dataclass(eq=False)
+class FormFrame:
+    """One form XObject on the way down to a nested object."""
+
+    name: str  # its name in the resources of the stream that paints it
+    index: int  # position of that `Do` in the painting stream's instructions
+    xobj: object  # the form itself (pikepdf stream)
+    isolated: bool  # an isolated transparency group: blends only within itself
+    knockout: bool
+
+
+@dataclass(eq=False)
+class BlendObject:
+    """One object (or transparency group) painted with a blend mode.
+
+    `start`..`end` are positions in the list of content instructions
+    (pikepdf.parse_content_stream) of the stream that paints it: the page when
+    `chain` is empty, otherwise the last form in `chain`. With these a check can
+    rebuild the page with and without the object. A run of text in one text
+    block counts as one object.
+    """
+
+    mode: str
+    start: int
+    end: int
+    kind: str  # path | text | image | imagemask | shading | group
+    bbox: tuple | None  # page points when known, else None
+    chain: tuple = ()  # FormFrames from the page down to the painting stream
+    events: int = 0
+    all_spot: bool = True
+
+    @property
+    def spot_only(self) -> bool:
+        """True when everything in it is painted in spot inks only."""
+        return self.events > 0 and self.all_spot
+
+
 class PageContent:
     def __init__(self):
         self.events: list[Event] = []
         self.blend_modes: set[str] = set()
         self.problems: Counter = Counter()
+        # Objects painted with a blend mode other than Normal, on the page or
+        # inside forms.
+        self.blend_objects: list[BlendObject] = []
+        # Blend-mode objects that cannot be isolated (inside pattern cells or
+        # knockout groups), by mode. A check must report them as not checked.
+        self.nested_blends: Counter = Counter()
+        # Fonts used to show visible text, keyed by object identity.
+        self.fonts: dict = {}
 
 
 class _State:
-    __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm",
+    __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm", "bm", "lw", "font",
                  "tm", "tlm", "fsize", "leading", "tr")
 
     def __init__(self):
@@ -112,6 +165,9 @@ class _State:
         self.op_fill = False
         self.op_stroke = False
         self.opm = 0
+        self.bm = "Normal"
+        self.lw = 1.0
+        self.font = None
         self.tm = IDENTITY
         self.tlm = IDENTITY
         self.fsize = 0.0
@@ -141,6 +197,39 @@ class PageWalker:
         self.out = PageContent()
         self._cs_cache: dict = {}
         self._active: set = set()
+        self._text_run: BlendObject | None = None
+        self._chain: list[FormFrame] = []
+        self._knockout = 0  # > 0 while inside a knockout group
+        self._idx = 0  # position of the instruction being interpreted
+
+    # ---- blend-mode objects --------------------------------------------
+    def _blend_begin(self, st, depth, idx, kind, bbox, located):
+        """Call before every paint. Records it when a blend mode is in force."""
+        prev, self._text_run = self._text_run, None
+        if st.bm == "Normal":
+            return None
+        if not located or self._knockout:
+            self.out.nested_blends[st.bm] += 1
+            return None
+        if kind == "text" and prev is not None and prev.mode == st.bm:
+            prev.end = idx
+            obj = prev
+        else:
+            obj = BlendObject(st.bm, idx, idx, kind, bbox, tuple(self._chain))
+            self.out.blend_objects.append(obj)
+        if kind == "text":
+            self._text_run = obj
+        return obj, len(self.out.events)
+
+    def _blend_end(self, mark):
+        if mark is None:
+            return
+        obj, first = mark
+        for e in self.out.events[first:]:
+            obj.events += 1
+            names = [n for n in e.cs.names if n != "None"]
+            if e.cs.kind != "sep" or not names or any(n in PROCESS_NAMES or n == "All" for n in names):
+                obj.all_spot = False
 
     # ---- colour spaces -------------------------------------------------
     def resolve_cs(self, obj, resources, depth=0) -> ColourSpace:
@@ -183,8 +272,16 @@ class PageWalker:
                 self._emit_pattern(pat, paint, st, bbox, resources, located)
                 return
         overprint = st.op_fill if paint == "fill" else st.op_stroke
+        width = None
+        if paint == "stroke":
+            # Line width is in user space: scale it by the current matrix.
+            a, b, c, d = st.ctm[:4]
+            width = st.lw * math.sqrt(abs(a * d - b * c))
         self.out.events.append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
-                                     parts if located else None))
+                                     parts if located else None, self._loc(st, located), width))
+
+    def _loc(self, st, located):
+        return (tuple(f.name for f in self._chain), self._idx, st.tr) if located else None
 
     def _emit_pattern(self, pat_name, paint, st, bbox, resources, located):
         try:
@@ -193,13 +290,16 @@ class PageWalker:
             if ptype == 2:
                 cs = self.resolve_cs(pattern["/Shading"].get("/ColorSpace"), resources)
                 self.out.events.append(Event("shading", paint, cs, None, bbox if located else None,
-                                             st.op_fill if paint == "fill" else st.op_stroke, st.opm))
+                                             st.op_fill if paint == "fill" else st.op_stroke, st.opm,
+                                             loc=self._loc(st, located)))
                 return
             if ptype == 1:
                 # Tiling pattern: walk its cell; positions inside it are not page positions.
                 sub = _State()
                 sub.op_fill, sub.op_stroke, sub.opm = st.op_fill, st.op_stroke, st.opm
+                idx = self._idx
                 self._walk(pattern, pattern.get("/Resources", resources), sub, 1, located=False)
+                self._idx = idx
                 return
         except Exception:
             pass
@@ -207,6 +307,9 @@ class PageWalker:
 
     # ---- main loop -----------------------------------------------------
     def run(self) -> PageContent:
+        group = self.page.obj.get("/Group")
+        if group is not None and bool(group.get("/K", False)):
+            self._knockout += 1
         resources = self.page.obj.get("/Resources")
         if resources is None:
             try:
@@ -239,7 +342,8 @@ class PageWalker:
                 return None
             return [box_of(sub) for sub in subs if sub]
 
-        for ins in instructions:
+        for idx, ins in enumerate(instructions):
+            self._idx = idx
             op = str(ins.operator)
             operands = ins.operands
             try:
@@ -271,16 +375,14 @@ class PageWalker:
                     x, y, w, h = _nums(operands)
                     subs.append([mat_apply(st.ctm, px_, py_) for px_, py_ in ((x, y), (x + w, y), (x + w, y + h), (x, y + h))])
                 # --- path painting
-                elif op in ("f", "F", "f*"):
-                    self._emit("path", "fill", st, path_bbox(), resources, located, parts=path_parts())
-                    subs = []
-                elif op in ("S", "s"):
-                    self._emit("path", "stroke", st, path_bbox(), resources, located, parts=path_parts())
-                    subs = []
-                elif op in ("B", "B*", "b", "b*"):
+                elif op in ("f", "F", "f*", "S", "s", "B", "B*", "b", "b*"):
                     bb, parts = path_bbox(), path_parts()
-                    self._emit("path", "fill", st, bb, resources, located, parts=parts)
-                    self._emit("path", "stroke", st, bb, resources, located, parts=parts)
+                    mark = self._blend_begin(st, depth, idx, "path", bb, located)
+                    if op not in ("S", "s"):
+                        self._emit("path", "fill", st, bb, resources, located, parts=parts)
+                    if op not in ("f", "F", "f*"):
+                        self._emit("path", "stroke", st, bb, resources, located, parts=parts)
+                    self._blend_end(mark)
                     subs = []
                 elif op == "n":
                     subs = []
@@ -312,8 +414,12 @@ class PageWalker:
                     st.scol = _nums(operands)
                     st.spat = operands[-1] if operands and isinstance(operands[-1], pikepdf.Name) else None
                 # --- graphics state
+                elif op == "w":
+                    st.lw = float(operands[0])
                 elif op == "gs":
                     g = resources["/ExtGState"][str(operands[0])]
+                    if "/LW" in g:
+                        st.lw = float(g["/LW"])
                     if "/OP" in g:
                         st.op_stroke = bool(g["/OP"])
                         if "/op" not in g:
@@ -327,13 +433,22 @@ class PageWalker:
                         if isinstance(bm, pikepdf.Array):
                             bm = bm[0] if len(bm) else pikepdf.Name("/Normal")
                         bm = str(bm)[1:]
-                        if bm not in ("Normal", "Compatible"):
+                        st.bm = "Normal" if bm in ("Normal", "Compatible") else bm
+                        if st.bm != "Normal":
                             self.out.blend_modes.add(bm)
                 # --- text
                 elif op == "BT":
                     st.tm = st.tlm = IDENTITY
+                    self._text_run = None
+                elif op == "ET":
+                    self._text_run = None
                 elif op == "Tf":
                     st.fsize = float(operands[1])
+                    try:
+                        st.font = resources["/Font"][str(operands[0])]
+                    except Exception:
+                        st.font = None
+                        self.out.problems["font could not be found"] += 1
                 elif op == "TL":
                     st.leading = float(operands[0])
                 elif op == "Tr":
@@ -355,22 +470,32 @@ class PageWalker:
                     if op in ("'", '"'):
                         st.tlm = mat_mul((1, 0, 0, 1, 0, -st.leading), st.tlm)
                         st.tm = st.tlm
+                    mark = None if st.tr in (3, 7) else self._blend_begin(st, depth, idx, "text", None, located)
                     self._show_text(operands[-1], st, resources, located)
+                    self._blend_end(mark)
                 # --- shading, images, forms
                 elif op == "sh":
                     sh = resources["/Shading"][str(operands[0])]
                     cs = self.resolve_cs(sh.get("/ColorSpace"), resources)
-                    self.out.events.append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm))
+                    mark = self._blend_begin(st, depth, idx, "shading", None, located)
+                    self.out.events.append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm,
+                                                 loc=self._loc(st, located)))
+                    self._blend_end(mark)
                 elif op == "INLINE IMAGE":
+                    mark = self._blend_begin(st, depth, idx, "image", self._image_geometry(st, 1, 1)[0], located)
                     self._inline_image(operands[0], st, resources, located)
+                    self._blend_end(mark)
                 elif op == "Do":
-                    self._do(operands[0], st, resources, depth, located)
+                    self._do(operands[0], st, resources, depth, located, idx)
             except Exception:
                 self.out.problems[f"operator '{op}' could not be interpreted"] += 1
 
     def _show_text(self, operand, st, resources, located):
         if st.tr in (3, 7):
             return
+        if st.font is not None:
+            key = st.font.objgen if st.font.is_indirect else id(st.font)
+            self.out.fonts.setdefault(key, st.font)
         # No font metrics are read, so the position is a one-em box at the point
         # where this run of text starts on its line. Good enough to say which
         # part of the page it is in; not a measured outline.
@@ -410,12 +535,13 @@ class PageWalker:
             cs = UNKNOWN
         self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs)
 
-    def _do(self, name, st, resources, depth, located):
+    def _do(self, name, st, resources, depth, located, idx):
         xobj = resources["/XObject"][str(name)]
         subtype = str(xobj.get("/Subtype"))
         if subtype == "/Image":
             w, h = int(xobj.get("/Width", 0)), int(xobj.get("/Height", 0))
             bbox, ppi = self._image_geometry(st, w, h)
+            mark = self._blend_begin(st, depth, idx, "image", bbox, located)
             if bool(xobj.get("/ImageMask", False)):
                 self._emit("imagemask", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi)
             else:
@@ -423,22 +549,39 @@ class PageWalker:
                 if cs.kind == "unknown":
                     self.out.problems["image colour space could not be read"] += 1
                 self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs)
+            self._blend_end(mark)
         elif subtype == "/Form":
             key = xobj.objgen
             if depth >= MAX_DEPTH or key in self._active:
                 self.out.problems["nested form too deep to follow"] += 1
                 return
             sub = st.copy()
+            # A transparency group is blended as one object, and starts with
+            # Normal inside. A plain form passes the blend mode on to each
+            # object inside it, and each of those is recorded on its own.
+            mark = None
+            group = xobj.get("/Group")
+            if group is not None:
+                mark = self._blend_begin(st, depth, idx, "group", None, located)
+                sub.bm = "Normal"
+            frame = FormFrame(str(name)[1:], idx, xobj,
+                              group is not None and bool(group.get("/I", False)),
+                              group is not None and bool(group.get("/K", False)))
             m = xobj.get("/Matrix")
             if m is not None:
                 mv = _nums(m)
                 if len(mv) == 6:
                     sub.ctm = mat_mul(mv, st.ctm)
             self._active.add(key)
+            self._chain.append(frame)
+            self._knockout += frame.knockout
             try:
                 self._walk(xobj, xobj.get("/Resources", resources), sub, depth + 1, located)
             finally:
+                self._knockout -= frame.knockout
+                self._chain.pop()
                 self._active.discard(key)
+                self._blend_end(mark)
 
 
 def walk_page(page: pikepdf.Page) -> PageContent:

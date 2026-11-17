@@ -21,6 +21,9 @@ class Options:
     min_ppi: float = 150.0
     preferred_ppi: float = 300.0
     ink_limit_pct: float = 400.0
+    # A bound job (booklet, catalogue): the spine edge of each page is not
+    # trimmed, so it needs no bleed. Page 1 is taken as a right-hand page.
+    bound: bool = False
 
 
 class Check:
