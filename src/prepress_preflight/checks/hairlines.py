@@ -31,7 +31,7 @@ class HairlineCheck(Check):
     def page(self, page, content):
         unlocated = 0
         for e in content.events:
-            if e.paint != "stroke" or e.width is None or e.width >= MIN_PT - EPS:
+            if e.paint != "stroke" or e.width is None or e.width * page.unit >= MIN_PT - EPS:
                 continue
             if e.cs.indexed or is_white(e.cs, e.colour):
                 continue

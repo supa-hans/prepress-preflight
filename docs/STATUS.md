@@ -214,6 +214,20 @@ Dielines: the wobblers file has a dieline of 148.0 × 208.0 mm inside an A4
 trim box, set to overprint. The size is the outer bounds of the dieline
 objects, not a measured cutting path.
 
+## Audit of 2026-11-17
+
+All checks were run on the same artwork placed four ways: plain, rotated 90
+and 180 degrees, with the page origin offset, and with a UserUnit of 2 (the
+scaling very large formats use). Rotation and offset were right. UserUnit was
+wrong: areas came out 4 times too large and lengths twice too long, because
+the renderer already applies the scale and the code applied it again. This
+was also in the original total ink check. Fixed, with tests in
+`tests/test_user_unit.py`. No sample file uses a UserUnit, so no result
+changed.
+
+All 14 samples run with no "could not check" findings. The slowest is the
+509 MB banner at about 11 seconds.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

@@ -8,7 +8,7 @@ MM = 72 / 25.4
 
 
 def build_pdf(path, content: bytes, media, trim=None, bleed=None, extgstate=None, colorspace=None, xobject=None,
-              font=None, rotate=None):
+              font=None, rotate=None, user_unit=None):
     pdf = pikepdf.new()
     resources = pikepdf.Dictionary()
     if extgstate:
@@ -27,6 +27,8 @@ def build_pdf(path, content: bytes, media, trim=None, bleed=None, extgstate=None
         page["/BleedBox"] = list(bleed)
     if rotate:
         page["/Rotate"] = rotate
+    if user_unit:
+        page["/UserUnit"] = user_unit  # very large formats: each page unit is this many points
     pdf.pages.append(pikepdf.Page(pdf.make_indirect(page)))
     pdf.save(str(path))
     return str(path)

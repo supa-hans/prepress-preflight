@@ -3,7 +3,7 @@ from __future__ import annotations
 import pymupdf
 
 from ..edges import EDGES, printing_page, scan_margin, spine_edge
-from ..model import UNCHECKED, WARN
+from ..model import MM_PER_PT, UNCHECKED, WARN
 from .base import Check
 
 DISPLAY_MM = 25.0  # type this large that runs off the page is treated as artwork
@@ -59,7 +59,7 @@ class SafeMarginCheck(Check):
                     q = pymupdf.Point(page.trim.x0, page.trim.y0 if name == "top" else page.trim.y1) * to_mu
                 horizontal = abs(p.x - q.x) >= abs(p.y - q.y)
                 sides[name] = ("x0" if p.x < q.x else "x1") if horizontal else ("y0" if p.y < q.y else "y1")
-            mm_per_unit = page.mm(1.0)
+            mm_per_unit = MM_PER_PT  # word boxes come from the renderer, already in points on paper
             for x0, y0, x1, y1, *_ in mu_page.get_text("words"):
                 if x1 <= trim.x0 or x0 >= trim.x1 or y1 <= trim.y0 or y0 >= trim.y1:
                     continue  # wholly outside the trim: slug text

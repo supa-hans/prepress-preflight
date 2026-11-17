@@ -70,7 +70,7 @@ class TotalInkCheck(Check):
         except Exception as exc:  # never report a pass that was not earned
             self.add(UNCHECKED, f"Ink coverage could not be measured ({type(exc).__name__})", [page.number])
             return
-        px_mm2 = (25.4 / dpi * page.unit) ** 2
+        px_mm2 = (25.4 / dpi) ** 2  # the renderer already applies the page's UserUnit
         peak = float(coverage.max()) if coverage.size else 0.0
         if peak > self.peak + 0.5:
             self.peak, self.peak_pages = peak, [page.number]

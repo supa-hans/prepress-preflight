@@ -215,7 +215,7 @@ class BlendOverInkCheck(Check):
                    min(box[2], obj.bbox[2] + 1), min(box[3], obj.bbox[3] + 1)]
             if box[2] <= box[0] or box[3] <= box[1]:
                 return None  # outside the printed area
-        area_in2 = max((box[2] - box[0]) / 72.0 * (box[3] - box[1]) / 72.0, 1e-6)
+        area_in2 = max((box[2] - box[0]) / 72.0 * (box[3] - box[1]) / 72.0, 1e-6) * page.unit ** 2
         dpi = int(min(72, max(12, (MAX_PIXELS / area_in2) ** 0.5)))
         levels = [streams[None]]
         for frame in obj.chain:
@@ -232,7 +232,7 @@ class BlendOverInkCheck(Check):
 
         both = (backdrop > INK_FLOOR) & (source > INK_FLOOR)
         stacked = np.where(both, backdrop + source, 0).max(axis=2) / 2.55
-        px_mm2 = (25.4 / dpi * page.unit) ** 2
+        px_mm2 = (25.4 / dpi) ** 2  # the renderer already applies the page's UserUnit
         tiers = ((FAIL, stacked >= FAIL_AT), (WARN, stacked > WARN_OVER), (NOTE, (stacked > 0) & (stacked <= WARN_OVER)))
         for severity, mask in tiers:
             if float(mask.sum()) * px_mm2 >= MIN_AREA_MM2:

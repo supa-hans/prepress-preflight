@@ -192,7 +192,7 @@ def _strip(mu_page, page, name, inside_mm, outside_mm):
     else:
         box, out, line, room = [t.x0, t.y1 - inside, t.x1, min(t.y1 + need, m.y1)], (0, 1), (t.x0, t.y1), m.y1 - t.y1
     along_pt = (t.y1 - t.y0) if out[1] == 0 else (t.x1 - t.x0)
-    dpi = int(max(36, min(MAX_DPI, MAX_ALONG_PX / max(along_pt / 72.0, 1e-6))))
+    dpi = int(max(36, min(MAX_DPI, MAX_ALONG_PX / max(along_pt * page.unit / 72.0, 1e-6))))
     to_mu = mu_page.transformation_matrix * mu_page.rotation_matrix
     clip = (pymupdf.Rect(box) * to_mu).normalize()
     pix = mu_page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, clip=clip, alpha=False, annots=False)
@@ -212,7 +212,8 @@ def _strip(mu_page, page, name, inside_mm, outside_mm):
     if not outward:
         ink, split = ink[:, ::-1], ink.shape[1] - split
     split = max(0, min(ink.shape[1], int(round(split))))
-    return ink, split, 25.4 / dpi * page.unit, box, along_pt, room
+    # The renderer already applies the page's UserUnit, so a pixel is 1/dpi inch on paper.
+    return ink, split, 25.4 / dpi, box, along_pt, room
 
 
 def _scan_edge(mu_page, page, name, need_mm):
