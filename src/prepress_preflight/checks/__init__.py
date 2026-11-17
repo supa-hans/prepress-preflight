@@ -13,6 +13,10 @@ from .total_ink import TotalInkCheck
 from .resolution import ImageResolutionCheck
 from .hairlines import HairlineCheck
 from .fonts import FontEmbeddingCheck
+from .annotations import AnnotationCheck
+from .layers import LayerCheck
+from .security import SecurityCheck
+from .output_intent import OutputIntentCheck
 
 ALL_CHECKS = [
     PageSizeCheck,
@@ -28,6 +32,10 @@ ALL_CHECKS = [
     ImageResolutionCheck,
     HairlineCheck,
     FontEmbeddingCheck,
+    AnnotationCheck,
+    LayerCheck,
+    SecurityCheck,
+    OutputIntentCheck,
 ]
 
 __all__ = ["Check", "Options", "ALL_CHECKS"]

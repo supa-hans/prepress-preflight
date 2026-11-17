@@ -21,6 +21,11 @@
 | Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
 | Font embedding | fail | A font used for visible text is not embedded |
+| Annotations | warn | Annotations set to print (stamps, comments), or any form field. Links are ignored |
+| Annotations | note | Comments not set to print |
+| Layers | warn | Any layer switched off. Visible layers are listed as a note |
+| Security | warn | File is encrypted or carries restrictions |
+| Output intent | note | Reports the stated print condition, or that there is none |
 
 Non-printing spot colours (dielines, embellishment layers) must never cause a fail.
 They are recognised by name (list in `edges.py`: dieline, cutcontour, crease,
@@ -166,6 +171,18 @@ the yearbook would be flagged on most pages (text 3.2 mm from the trim).
 Limits: outlined type is only seen on a white edge, not over a background that
 bleeds. Word boxes include the full line height.
 
+## Document-level checks (added 2026-11-17)
+
+Annotations, Layers, Security and Output intent. Severities are Claude's call
+under the owner's delegation: none is a fail, because each depends on how the
+RIP treats it. The samples barely exercise them (one link annotation, two files
+with visible layers, two with an output intent), so they are proven on
+synthetic files. An encrypted file that opens without a password is still
+measured in full by every other check.
+
+Known inconsistency, stated in the Layers check: checks that read page content
+look at hidden layers, checks that work from a render do not.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -178,8 +195,7 @@ bleeds. Word boxes include the full line height.
    default stays at 400% as a placeholder.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
-5. Later checks: trim mark detection, dieline measurement,
-   annotations, layers, security, output intent.
+5. Later checks: trim mark detection, dieline measurement.
 6. Later phases: page boxes, trim marks and scaling; bleed fixes; spot colour
    tools; action lists; desktop interface; object tree and editing.
 

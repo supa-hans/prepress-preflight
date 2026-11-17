@@ -52,6 +52,10 @@ Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 | Safe margin | warn | Live text within 1.5 mm of the trim (`--safe-margin`) or crossing it, and artwork that close to a white edge without reaching it. |
 | Hairlines | warn | Stroked lines thinner than 0.25 pt as placed on the page. White lines and non-printing spots are left out. |
 | Font embedding | fail | A font used for visible text is not embedded. |
+| Annotations | warn / note | Warns on annotations set to print and on form fields. Notes comments that will not print. |
+| Layers | warn / note | Warns when a layer is switched off. Lists visible layers. |
+| Security | warn | The file is encrypted or restricted. |
+| Output intent | note | Reports the print condition the file states, if any. |
 
 Severities: **fail**, **warn**, **note**, and **could not check**. If the tool
 meets something it cannot interpret it says so; it does not report a pass it
