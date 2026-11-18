@@ -160,7 +160,7 @@ class PageContent:
 
 class _State:
     __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm", "bm", "lw", "font",
-                 "tm", "tlm", "fsize", "leading", "tr")
+                 "tm", "tlm", "fsize", "leading", "tr", "fdef", "sdef", "gs_names", "smask", "ca", "CA")
 
     def __init__(self):
         self.ctm = IDENTITY
@@ -181,6 +181,12 @@ class _State:
         self.fsize = 0.0
         self.leading = 0.0
         self.tr = 0
+        # For object details only: the colour space as written (operand, resources),
+        # the ExtGStates applied, soft mask and constant opacity.
+        self.fdef = self.sdef = None
+        self.gs_names = ()
+        self.smask = False
+        self.ca = self.CA = 1.0
 
     def copy(self):
         s = _State.__new__(_State)
@@ -199,9 +205,24 @@ def _nums(operands):
     return tuple(out)
 
 
+@dataclass
+class Snapshot:
+    """Everything known when one object was painted (see `PageWalker(detail=...)`)."""
+
+    event: Event
+    state: _State
+    resources: object
+    stream: object  # the page or form whose content paints it
+    index: int  # the painting instruction's position in that stream
+    chain: tuple
+
+
 class PageWalker:
-    def __init__(self, page: pikepdf.Page):
+    def __init__(self, page: pikepdf.Page, detail: int | None = None):
         self.page = page
+        self.detail = detail  # the event number to keep a Snapshot of
+        self.snapshot: Snapshot | None = None
+        self._stream = page
         self.out = PageContent()
         self._cs_cache: dict = {}
         self._active: set = set()
@@ -290,9 +311,14 @@ class PageWalker:
             font = str(st.font.get("/BaseFont", "/(unnamed)"))[1:]
             if len(font) > 7 and font[6] == "+":
                 font = font[7:]  # drop the subset tag
-        self.out.events.append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
-                                     parts if located else None, self._loc(st, located), width, font, st.bm,
-                                     tuple((f.name, f.blend) for f in self._chain)))
+        self._append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
+                           parts if located else None, self._loc(st, located), width, font, st.bm,
+                           tuple((f.name, f.blend) for f in self._chain)), st, resources)
+
+    def _append(self, event, st, resources):
+        if self.detail is not None and len(self.out.events) == self.detail:
+            self.snapshot = Snapshot(event, st.copy(), resources, self._stream, self._idx, tuple(self._chain))
+        self.out.events.append(event)
 
     def _loc(self, st, located):
         return (tuple(f.name for f in self._chain), self._idx, st.tr) if located else None
@@ -303,9 +329,10 @@ class PageWalker:
             ptype = int(pattern.get("/PatternType", 0))
             if ptype == 2:
                 cs = self.resolve_cs(pattern["/Shading"].get("/ColorSpace"), resources)
-                self.out.events.append(Event("shading", paint, cs, None, bbox if located else None,
-                                             st.op_fill if paint == "fill" else st.op_stroke, st.opm,
-                                             loc=self._loc(st, located)))
+                self._append(Event("shading", paint, cs, None, bbox if located else None,
+                                   st.op_fill if paint == "fill" else st.op_stroke, st.opm,
+                                   loc=self._loc(st, located), blend=st.bm,
+                                   groups=tuple((f.name, f.blend) for f in self._chain)), st, resources)
                 return
             if ptype == 1:
                 # Tiling pattern: walk its cell; positions inside it are not page positions.
@@ -339,6 +366,13 @@ class PageWalker:
         except Exception:
             self.out.problems["content stream could not be parsed"] += 1
             return
+        outer, self._stream = self._stream, stream
+        try:
+            self._interpret(instructions, resources, st, depth, located)
+        finally:
+            self._stream = outer
+
+    def _interpret(self, instructions, resources, st, depth, located):
         stack = []
         subs: list = []  # current path as a list of subpaths; points already in page space
 
@@ -402,22 +436,24 @@ class PageWalker:
                     subs = []
                 # --- colour
                 elif op == "g":
-                    st.fcs, st.fcol, st.fpat = GRAY, _nums(operands), None
+                    st.fcs, st.fcol, st.fpat, st.fdef = GRAY, _nums(operands), None, None
                 elif op == "G":
-                    st.scs, st.scol, st.spat = GRAY, _nums(operands), None
+                    st.scs, st.scol, st.spat, st.sdef = GRAY, _nums(operands), None, None
                 elif op == "rg":
-                    st.fcs, st.fcol, st.fpat = RGB, _nums(operands), None
+                    st.fcs, st.fcol, st.fpat, st.fdef = RGB, _nums(operands), None, None
                 elif op == "RG":
-                    st.scs, st.scol, st.spat = RGB, _nums(operands), None
+                    st.scs, st.scol, st.spat, st.sdef = RGB, _nums(operands), None, None
                 elif op == "k":
-                    st.fcs, st.fcol, st.fpat = CMYK, _nums(operands), None
+                    st.fcs, st.fcol, st.fpat, st.fdef = CMYK, _nums(operands), None, None
                 elif op == "K":
-                    st.scs, st.scol, st.spat = CMYK, _nums(operands), None
+                    st.scs, st.scol, st.spat, st.sdef = CMYK, _nums(operands), None, None
                 elif op == "cs":
+                    st.fdef = (operands[0], resources)
                     st.fcs, st.fcol, st.fpat = self.resolve_cs(operands[0], resources), None, None
                     if st.fcs.kind == "unknown":
                         self.out.problems["colour space could not be read"] += 1
                 elif op == "CS":
+                    st.sdef = (operands[0], resources)
                     st.scs, st.scol, st.spat = self.resolve_cs(operands[0], resources), None, None
                     if st.scs.kind == "unknown":
                         self.out.problems["colour space could not be read"] += 1
@@ -432,6 +468,14 @@ class PageWalker:
                     st.lw = float(operands[0])
                 elif op == "gs":
                     g = resources["/ExtGState"][str(operands[0])]
+                    gs_name = str(operands[0])[1:]  # each once, most recently applied last
+                    st.gs_names = tuple(n for n in st.gs_names if n != gs_name) + (gs_name,)
+                    if "/SMask" in g:
+                        st.smask = str(g["/SMask"]) != "/None"
+                    if "/ca" in g:
+                        st.ca = float(g["/ca"])
+                    if "/CA" in g:
+                        st.CA = float(g["/CA"])
                     if "/LW" in g:
                         st.lw = float(g["/LW"])
                     if "/OP" in g:
@@ -492,8 +536,8 @@ class PageWalker:
                     sh = resources["/Shading"][str(operands[0])]
                     cs = self.resolve_cs(sh.get("/ColorSpace"), resources)
                     mark = self._blend_begin(st, depth, idx, "shading", None, located)
-                    self.out.events.append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm,
-                                                 loc=self._loc(st, located)))
+                    self._append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm, loc=self._loc(st, located),
+                                       blend=st.bm, groups=tuple((f.name, f.blend) for f in self._chain)), st, resources)
                     self._blend_end(mark)
                 elif op == "INLINE IMAGE":
                     mark = self._blend_begin(st, depth, idx, "image", self._image_geometry(st, 1, 1)[0], located)

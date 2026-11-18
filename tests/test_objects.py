@@ -85,3 +85,91 @@ def test_rotated_page_points_map_back(make):
     (hit,) = at(path, 125, 125)
     assert hit["view"] == pytest.approx([100, 100, 150, 150], abs=0.05)
     assert at(path, 125, HEIGHT - 125 + 300) == []
+
+
+# ---- full details of one object ----------------------------------------------
+
+from prepress_preflight.objects import icc_description, object_details  # noqa: E402
+
+from conftest import TRIM, MM, gray_image  # noqa: E402
+
+
+def details(path, x, y, which=0):
+    with pikepdf.open(path) as pdf, pymupdf.open(path) as doc:
+        hit = objects_at(pdf.pages[0], doc.load_page(0), x, y)[which]
+        return object_details(pdf.pages[0], doc.load_page(0), hit["id"])
+
+
+def test_details_of_a_spot_colour_give_its_cmyk_equivalent(make):
+    tint = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 1, 0.6, 0], N=1)
+    spot = pikepdf.Array([pikepdf.Name.Separation, pikepdf.Name("/PANTONE 186 C"), pikepdf.Name.DeviceCMYK, tint])
+    path = make(b"/CS0 cs 0.5 scn 100 100 50 50 re f", colorspace={"/CS0": spot})
+    d = details(path, 125, HEIGHT - 125)
+    assert d["space"] == {"resource": "CS0", "space": "Separation", "inks": ["PANTONE 186 C"], "alternate": "DeviceCMYK",
+                          "tint_transform": "exponential", "cmyk_equivalent": "C0 M50 Y30 K0", "equivalent_at": "PANTONE 186 C 50%"}
+    assert d["source"] == {"stream": "page", "instruction": 4, "excerpt": ["/CS0 cs", "0.5 scn", "100 100 50 50 re", "f"]}
+
+
+def test_details_give_place_from_the_trim_in_mm(make):
+    # a box 10 mm in from the trim's left and 5 mm down from its top, 20 x 8 mm
+    x0, top = TRIM[0] + 10 * MM, TRIM[3] - 5 * MM
+    path = make(f"0 0 0 1 k {x0:.4f} {top - 8 * MM:.4f} {20 * MM:.4f} {8 * MM:.4f} re f".encode())
+    d = details(path, x0 + 5, HEIGHT - top + 5)
+    place = d.pop("place")
+    assert place.pop("trim") == "trim box"
+    assert place == pytest.approx({"width_mm": 20, "height_mm": 8, "from_trim_left_mm": 10, "from_trim_top_mm": 5}, abs=0.01)
+    assert d["space"] == {"space": "DeviceCMYK"}
+
+
+def test_details_of_the_graphics_state(make):
+    gs = {"/GS0": pikepdf.Dictionary(OP=True, OPM=1), "/GS1": pikepdf.Dictionary(ca=0.5, BM=pikepdf.Name.Screen)}
+    path = make(b"/GS0 gs /GS1 gs /GS0 gs 0 0 0 1 k 100 100 50 50 re f", extgstate=gs)
+    s = details(path, 125, HEIGHT - 125)["state"]
+    assert s == {"overprint_fill": True, "overprint_stroke": True, "overprint_mode": 1, "blend": "Screen",
+                 "opacity_fill": 0.5, "opacity_stroke": 1.0, "soft_mask": False, "extgstates": ["GS1", "GS0"]}
+
+
+def test_details_of_text(make):
+    def font(pdf):
+        desc = pikepdf.Dictionary(Type=pikepdf.Name.FontDescriptor, FontName=pikepdf.Name("/ABCDEF+Frutiger-Roman"),
+                                  FontFile3=pdf.make_stream(b"x"))
+        return pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+                                  BaseFont=pikepdf.Name("/ABCDEF+Frutiger-Roman"), FontDescriptor=pdf.make_indirect(desc))
+    # 10 pt type in a form scaled 1.5x prints at 15 pt
+    path = make(b"q 1.5 0 0 1.5 0 0 cm BT /F1 10 Tf 0 0 0 1 k 70 70 Td (Hello) Tj ET Q", font={"/F1": font})
+    d = details(path, 110, HEIGHT - 110)
+    assert d["text"] == {"name": "Frutiger-Roman", "type": "Type1", "size": 15.0, "embedded": True, "sample": "Hello"}
+
+
+def test_details_of_an_image(make):
+    path = make(b"q 72 0 0 72 100 100 cm /Im0 Do Q", xobject={"/Im0": gray_image(100, 100)})
+    d = details(path, 130, HEIGHT - 130)
+    assert d["image"] == {"name": "Im0", "bits": 8, "compression": "FlateDecode", "soft_mask": False, "mask": False, "interpolate": False}
+    assert d["space"] == {"space": "DeviceGray"}
+    assert d["place"]["width_mm"] == pytest.approx(25.4, abs=0.01)
+
+
+def test_details_of_an_object_that_is_not_there(make):
+    path = make(b"0 0 0 1 k 100 100 50 50 re f")
+    with pikepdf.open(path) as pdf, pymupdf.open(path) as doc, pytest.raises(ValueError):
+        object_details(pdf.pages[0], doc.load_page(0), 5)
+
+
+def _icc(desc: bytes, kind=b"desc") -> bytes:
+    if kind == b"desc":
+        tag = b"desc" + b"\0" * 4 + len(desc).to_bytes(4, "big") + desc
+    else:
+        text = desc[:-1].decode().encode("utf-16-be")
+        tag = b"mluc" + b"\0" * 4 + (1).to_bytes(4, "big") + (12).to_bytes(4, "big") + b"enUS" + \
+            len(text).to_bytes(4, "big") + (28).to_bytes(4, "big") + text
+    header = bytearray(128)
+    table = (1).to_bytes(4, "big") + b"desc" + (144).to_bytes(4, "big") + len(tag).to_bytes(4, "big")
+    return bytes(header) + table + tag
+
+
+@pytest.mark.parametrize("kind", [b"desc", b"mluc"])
+def test_icc_profile_names(kind):
+    pdf = pikepdf.new()
+    stream = pdf.make_stream(_icc(b"Coated FOGRA39 (ISO 12647-2:2004)\0", kind), N=4)
+    assert icc_description(stream) == "Coated FOGRA39 (ISO 12647-2:2004)"
+    assert icc_description(pdf.make_stream(b"short")) is None

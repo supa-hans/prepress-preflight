@@ -47,7 +47,8 @@ preflight app --browser       # use the browser even when the window is availabl
 
 Inspect a file (pages, the findings marked on them, trim and bleed, each
 printing plate on its own with overprint honoured, and every object under a
-point you click, topmost first, with its colour, ink and blend), preview
+point you click, topmost first; select one for its colour definition,
+graphics state and the instructions that paint it), preview
 a fix as before and after, keep the fixes you want in a review list, and
 export them to a new file after confirming. It runs on this computer only,
 reads files where they are, and never changes the original.

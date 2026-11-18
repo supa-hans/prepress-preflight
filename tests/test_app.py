@@ -360,3 +360,32 @@ def test_objects_under_a_point(app, make):
     with pytest.raises(urllib.error.HTTPError) as e:
         get(base, "/api/objects?n=5&x=1&y=1")
     assert e.value.code == 400
+
+
+def test_object_details(app, make):
+    base = app(make(b"0 0 0 1 k 100 100 100 100 re f"))
+    wait_report(base)
+    height = MEDIA[3] - MEDIA[1]
+    hit = json.loads(get(base, f"/api/objects?n=1&x=150&y={height - 150}")[2])["objects"][0]
+    d = json.loads(get(base, f"/api/object?n=1&id={hit['id']}")[2])["object"]
+    assert d["colour"] == "C0 M0 Y0 K100" and d["source"]["excerpt"][-1] == "f"
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base, "/api/object?n=1&id=99")
+    assert e.value.code == 400
+
+
+
+def test_object_position_uses_the_trim_from_crop_marks(app, make):
+    # the banner case: the trim box is the whole page, the crop marks show the real trim
+    from test_marks_and_dielines import crop_marks
+    box = (TRIM[0] + 10 * MM, TRIM[1] + 10 * MM, TRIM[0] + 30 * MM, TRIM[1] + 20 * MM)
+    content = crop_marks(TRIM, offset=1 * MM, length=6 * MM) + b"0 0 0 1 k " + rect(box) + b"f"
+    base = app(make(content, colorspace={"/CS0": registration_space()}, trim=MEDIA, bleed=MEDIA))
+    wait_report(base)
+    height = MEDIA[3] - MEDIA[1]
+    hit = json.loads(get(base, f"/api/objects?n=1&x={box[0] + 5}&y={height - box[1] - 5}")[2])["objects"][0]
+    place = json.loads(get(base, f"/api/object?n=1&id={hit['id']}")[2])["object"]["place"]
+    assert place["trim"] == "inferred from the crop marks"
+    # 10 mm in from the trim's left; 60 - 20 = 40 mm down from its top
+    assert place["from_trim_left_mm"] == pytest.approx(10, abs=0.05)
+    assert place["from_trim_top_mm"] == pytest.approx(40, abs=0.05)

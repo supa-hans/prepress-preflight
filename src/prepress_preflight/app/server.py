@@ -42,7 +42,7 @@ from ..fix_cli import _settings
 from ..fixes import FIXES
 from ..fixes.chain import deliver, run_chain
 from ..model import FAIL, UNCHECKED, WARN
-from ..objects import objects_at
+from ..objects import object_details, objects_at
 from ..plates import ink_coverage, page_inks, render_plate
 from ..content import walk_page
 import pikepdf
@@ -306,6 +306,18 @@ class Session:
             raise ValueError("No file is open" if which != "after" else "There is no preview")
         return path
 
+    def object_details(self, number: int, obj: int, which: str = "before") -> dict:
+        """Everything known about one object on a page (its number from `objects`)."""
+        path = self._file(which)
+        with RENDER_LOCK, pikepdf.open(path) as pdf, pymupdf.open(path) as doc:
+            if not 1 <= number <= len(pdf.pages):
+                raise ValueError("No such page")
+            # measure from the same trim the page shows: inferred from crop marks when the report says so
+            report = {"after": (self.preview or {}).get("report"), "base": self.base_report}.get(which, self.report)
+            g = next((g for g in (report or {}).get("page_geometry", []) if g["page"] == number), None)
+            trim = (g["trim"], g["trim_inferred"]) if g and g["trim"] else None
+            return object_details(pdf.pages[number - 1], doc.load_page(number - 1), obj, trim=trim)
+
     def objects(self, number: int, x: float, y: float, which: str = "before") -> list[dict]:
         """The objects under a point on the rendered page, topmost first."""
         path = self._file(which)
@@ -530,6 +542,11 @@ def make_handler(session: Session, key: str, port_ref: dict):
                     x, y = float((query.get("x") or ["0"])[0]), float((query.get("y") or ["0"])[0])
                     which = (query.get("which") or ["before"])[0]
                     return self._json(HTTPStatus.OK, {"objects": session.objects(number, x, y, which)})
+                if url.path == "/api/object":
+                    number = int((query.get("n") or ["1"])[0])
+                    obj = int((query.get("id") or ["-1"])[0])
+                    which = (query.get("which") or ["before"])[0]
+                    return self._json(HTTPStatus.OK, {"object": session.object_details(number, obj, which)})
                 if url.path == "/api/inks":
                     number = int((query.get("n") or ["1"])[0])
                     which = (query.get("which") or ["before"])[0]

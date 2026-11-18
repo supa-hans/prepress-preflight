@@ -6,7 +6,7 @@
   const LABEL = { fail: "Fail", unchecked: "Could not check", warn: "Warn", note: "Note" };
   const state = { report: null, page: 1, zoom: null, selected: null, path: null, mode: "inspect", which: "before",
                   preview: null, previewBusy: false, queue: [], queueReport: null, queueEffect: null,
-                  exported: null, plate: "", inksFor: null, here: null, hereHover: null, herePoint: null };
+                  exported: null, plate: "", inksFor: null, here: null, hereHover: null, herePoint: null, hereOn: null };
 
   // What each fix asks for. Field values become the same options the command line takes.
   const FIXES = {
@@ -324,7 +324,8 @@
       c.setAttribute("fill", "none"); c.setAttribute("stroke", css.getPropertyValue("--accent"));
       c.setAttribute("stroke-width", 2); c.setAttribute("vector-effect", "non-scaling-stroke");
       svg.append(c);
-      if (state.hereHover && state.hereHover.view) rect(state.hereHover.view, "obj", css.getPropertyValue("--accent"), "", 2, 2 / zoom);
+      const shown = state.hereHover || state.hereOn;
+      if (shown && shown.view) rect(shown.view, "obj", css.getPropertyValue("--accent"), "", 2, 2 / zoom);
     }
     if (state.selected !== null && !showingAfter()) {
       const f = state.report.findings[state.selected];
@@ -342,7 +343,8 @@
     const x = (event.clientX - img.left) / img.width * g.width;
     const y = (event.clientY - img.top) / img.height * g.height;
     state.herePoint = { page: state.page, at: [x, y] };
-    state.hereHover = null;
+    state.hereHover = null; state.hereOn = null;
+    $("detail").hidden = true;
     let objects = [];
     try { objects = (await api(`/api/objects?n=${state.page}&x=${x.toFixed(2)}&y=${y.toFixed(2)}&which=${view()[0]}`)).objects; }
     catch (e) { objects = []; }
@@ -376,15 +378,88 @@
       if (o.blend && o.blend !== "Normal") flags.push(`blend: ${o.blend}`);
       if (o.group_blend) flags.push(`in a ${o.group_blend} group`);
       if (flags.length) { const f = document.createElement("div"); f.className = "o-flag small"; f.textContent = flags.join(" · "); li.append(f); }
+      li.tabIndex = 0;
+      li.onclick = () => showDetail(o, li);
+      li.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showDetail(o, li); } };
       li.onmouseenter = () => { state.hereHover = o; renderPage(); };
       li.onmouseleave = () => { state.hereHover = null; renderPage(); };
       ol.append(li);
     }
   }
 
+  const yes = (v) => (v ? "yes" : "no");
+  const pctText = (v) => `${Math.round(v * 100)}%`;
+
+  function section(title, rows, pre) {
+    const box = document.createElement("div");
+    const h = document.createElement("h4");
+    h.textContent = title;
+    box.append(h);
+    if (rows) {
+      const dl = document.createElement("dl");
+      for (const [k, v] of rows) {
+        if (v === undefined || v === null || v === "") continue;
+        const dt = document.createElement("dt"); dt.textContent = k;
+        const dd = document.createElement("dd"); dd.textContent = v;
+        dl.append(dt, dd);
+      }
+      box.append(dl);
+    }
+    if (pre) { const p = document.createElement("pre"); p.textContent = pre; box.append(p); }
+    return box;
+  }
+
+  function spaceRows(sp) {
+    if (!sp) return [];
+    const rows = [["Defined as", sp.space + (sp.resource ? ` (${sp.resource})` : "")]];
+    if (sp.profile) rows.push(["Profile", `${sp.profile}, ${sp.channels} channels`]);
+    if (sp.inks) rows.push(["Inks", sp.inks.join(", ")]);
+    if (sp.alternate) rows.push(["Alternate", `${sp.alternate}, ${sp.tint_transform} tint transform`]);
+    if (sp.cmyk_equivalent) rows.push(["Prints as", `${sp.cmyk_equivalent} (at ${sp.equivalent_at}) if not separated`]);
+    if (sp.base) rows.push(["Based on", spaceRows(sp.base).map((r) => r[1]).join(", ")]);
+    if (sp.entries) rows.push(["Colours", sp.entries]);
+    if (sp.white_point) rows.push(["White point", sp.white_point.join(" ")]);
+    return rows;
+  }
+
+  async function showDetail(o, li) {
+    for (const el of $("here-list").children) el.classList.toggle("on", el === li);
+    state.hereOn = o; renderPage();
+    const box = $("detail");
+    box.hidden = false;
+    box.textContent = "Reading…";
+    let d;
+    try { d = (await api(`/api/object?n=${state.page}&id=${o.id}&which=${view()[0]}`)).object; }
+    catch (e) { box.textContent = `Could not read this object: ${e.message}`; return; }
+    box.textContent = "";
+    const pl = d.place;
+    box.append(section(d.kind, [
+      ["Colour", d.colour], ["Total ink", d.ink !== null && d.ink !== undefined ? `${d.ink}%` : null],
+      ["Size", pl ? `${pl.width_mm} × ${pl.height_mm} mm` : "not known"],
+      ["From trim", pl ? `${pl.from_trim_left_mm} mm from the left, ${pl.from_trim_top_mm} mm from the top (${pl.trim})` : null],
+      ["Line weight", d.width !== undefined ? `${d.width} pt (${(d.width * 25.4 / 72).toFixed(3)} mm)` : null],
+      ["Gradient", d.gradient], ["Inside", d.inside],
+    ]));
+    if (d.text) box.append(section("Text", [["Font", d.text.name], ["Type", d.text.type],
+      ["Embedded", d.text.embedded === null ? "not known" : yes(d.text.embedded)], ["Size", `${d.text.size} pt`], ["Shows", d.text.sample]]));
+    if (d.image) box.append(section("Image", [["Name", d.image.name], ["Pixels", d.pixels ? `${d.pixels[0]} × ${d.pixels[1]}` : null],
+      ["Resolution", d.ppi ? `${d.ppi} ppi` : null], ["Bits", d.image.bits], ["Compression", d.image.compression],
+      ["Soft mask", yes(d.image.soft_mask)], ["Interpolate", yes(d.image.interpolate)]]));
+    if (d.space) box.append(section("Colour space", spaceRows(d.space)));
+    const s = d.state;
+    box.append(section("Graphics state", [
+      ["Overprint", `fill ${yes(s.overprint_fill)}, stroke ${yes(s.overprint_stroke)}, mode ${s.overprint_mode}`],
+      ["Blend", s.blend + (d.group_blend ? ` (inside a ${d.group_blend} group)` : "")],
+      ["Opacity", s.opacity_fill === 1 && s.opacity_stroke === 1 ? "100%" : `fill ${pctText(s.opacity_fill)}, stroke ${pctText(s.opacity_stroke)}`],
+      ["Soft mask", yes(s.soft_mask)], ["ExtGState", s.extgstates.join(", ") || "none"],
+    ]));
+    box.append(section(`Source: ${d.source.stream}, instruction ${d.source.instruction}`, null, d.source.excerpt.join("\n")));
+  }
+
   function closeObjects() {
     $("here").hidden = true;
-    state.herePoint = null; state.hereHover = null;
+    $("detail").hidden = true;
+    state.herePoint = null; state.hereHover = null; state.hereOn = null;
     if (state.report) renderPage();
   }
 

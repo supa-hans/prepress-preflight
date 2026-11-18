@@ -686,9 +686,28 @@ group blend mode, and an object inside a Multiply group is shown as "in a
 Multiply group". On the pull-up banner, one click on the black panel shows the
 fault: K100 inside Fm0 (Multiply group), over a plain K100 box.
 
-Next steps for the object tree, when wanted: select an object to see its full
-details (colour space definition, graphics state, the content it comes from),
-then the first edits, which will follow the propose, review and export rules.
+Object details (added 2026-11-18): selecting an object in the list shows
+everything the file says about it:
+  * size in mm, and position from the trim's top-left corner (the trim inferred
+    from crop marks when the report uses one, and it says which);
+  * how its colour is defined: the colour space resource, ICC profile name and
+    channels, a spot's inks, alternate space and tint transform, and the CMYK
+    the spot would print as if it were not separated (worked out with the
+    tool's own function evaluator, at the object's tint);
+  * text: font, type, whether it is embedded, size as printed (scaling
+    included) and the characters shown, when the font is a simple one;
+  * images: name, bits, compression, soft mask, interpolation;
+  * graphics state: overprint fill and stroke, overprint mode, blend (and the
+    group's blend when inside one), opacity, soft mask, and the ExtGStates in
+    force;
+  * the source: which stream (page or form chain), the instruction number, and
+    the instructions that build and paint it.
+The walker gets this from a "detail" mode: it walks the page exactly as for the
+checks, and keeps a snapshot of the full state when it paints the chosen
+object, so the details and the checks cannot disagree about which object it is.
+
+Next for the object tree, when wanted: the first edits, which will follow the
+propose, review and export rules.
 
 ## Next tasks, in order
 
