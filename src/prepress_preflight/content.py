@@ -215,13 +215,17 @@ class Snapshot:
     stream: object  # the page or form whose content paints it
     index: int  # the painting instruction's position in that stream
     chain: tuple
+    number: int = -1  # the event's number in the page's walk order
 
 
 class PageWalker:
-    def __init__(self, page: pikepdf.Page, detail: int | None = None):
+    def __init__(self, page: pikepdf.Page, detail=None):
         self.page = page
-        self.detail = detail  # the event number to keep a Snapshot of
+        # Which events to keep a Snapshot of: an event number, or a test
+        # (event -> bool). `snapshot` is the first kept, `snapshots` all of them.
+        self.detail = detail
         self.snapshot: Snapshot | None = None
+        self.snapshots: list[Snapshot] = []
         self._stream = page
         self.out = PageContent()
         self._cs_cache: dict = {}
@@ -316,8 +320,11 @@ class PageWalker:
                            tuple((f.name, f.blend) for f in self._chain)), st, resources)
 
     def _append(self, event, st, resources):
-        if self.detail is not None and len(self.out.events) == self.detail:
-            self.snapshot = Snapshot(event, st.copy(), resources, self._stream, self._idx, tuple(self._chain))
+        number = len(self.out.events)
+        if self.detail is not None and (self.detail(event) if callable(self.detail) else number == self.detail):
+            snap = Snapshot(event, st.copy(), resources, self._stream, self._idx, tuple(self._chain), number)
+            self.snapshots.append(snap)
+            self.snapshot = self.snapshot or snap
         self.out.events.append(event)
 
     def _loc(self, st, located):

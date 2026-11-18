@@ -410,3 +410,11 @@ def test_knock_out_an_object_chosen_in_the_inspector(app, make, tmp_path):
     post(base, "/api/export", {"path": str(dst), "confirm": True})
     with pikepdf.open(dst) as pdf:
         assert [e.overprint for e in walk_page(pdf.pages[0]).events] == [False, False]
+
+
+def test_white_overprint_suggests_knocking_it_out(app, make):
+    import pikepdf
+    gs = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
+    report = wait_report(app(make(b"/GS0 gs 0 0 0 0 k 120 120 20 20 re f", extgstate=gs)))["report"]
+    i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "White overprint")
+    assert report["suggestions"][i] == ["knock-out-white"]

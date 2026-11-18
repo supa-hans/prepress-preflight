@@ -741,9 +741,41 @@ none did before) and the White overprint finding goes from 14 to 13 text
 objects. 14 of the page's 26 white overprinting objects are on the page; the
 rest lie outside the media box, which the check rightly ignores.
 
-Possible next: an "all white overprint" fix (knock out every white object set
-to overprint, page by page) for the catalogue case, built on the same
-mechanism; then other single-object edits (remove, recolour).
+## Knock out all white overprint (added 2026-11-19)
+
+Owner's rule (2026-11-19): white overprint is never good and should always be
+fixed. So `knock-out-white` fixes every object the White overprint check
+reports, in one preview, and the app suggests it on that finding.
+
+The single-object edit restores known overprint values after the object.
+Across a whole file that is not safe: a form painted in two places can inherit
+different settings at each. So here each white object is wrapped in
+`q /GS gs … Q`, and `Q` puts back whatever was in force, wherever the form is
+used. Two exceptions, where the state is put back with a second ExtGState and
+so must be known (the same at every use): text, because `q`/`Q` are not
+allowed in a text block, and a path that also sets a clip, because `Q` would
+drop the clip.
+
+Left alone and reported (they stay as fails): objects in pattern fills;
+objects in a form that is also painted where it is not white (a form can
+inherit its colour, and the change would reach the non-white uses); the
+restore cases where uses disagree on overprint; a form without its own
+resources painted more than once.
+
+Verification compares every object on every page: the only allowed difference
+is a white object going from overprint to knockout, and every target must have
+changed.
+
+On the catalogue (2026-11-19): 14 text objects on page 48 and 6 on page 49,
+fixed in about 3 seconds; the White overprint check then passes. Every plate
+of all 56 pages was compared before and after: pages 48 and 49 lose ink only
+under the white text (Silver, CMYK), no page gains ink, and no other page
+changes. (Page 5 showed a 3-level jitter in one run; the original rendered
+against itself in the same way shows the same jitter, so it is MuPDF, not the
+edit.)
+
+Next for the object tree: other single-object edits (remove, recolour), when
+wanted.
 
 ## Next tasks, in order
 
