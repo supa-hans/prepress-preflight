@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight</title>
+<link rel="stylesheet" href="/static/app.css?key=__KEY__">
+</head>
+<body>
+<header class="bar">
+  <div class="file">
+    <span id="name" class="name">No file open</span>
+    <span id="status" class="badge" hidden></span>
+  </div>
+  <div class="modes" role="tablist" aria-label="Mode">
+    <button class="mode on" role="tab" aria-selected="true">Inspect</button>
+    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 2">Propose</button>
+    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Review</button>
+    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Export</button>
+  </div>
+  <div class="actions">
+    <button id="open">Open PDF</button>
+  </div>
+</header>
+
+<main class="layout">
+  <nav id="thumbs" class="thumbs" aria-label="Pages"></nav>
+
+  <section class="stage">
+    <div class="tools">
+      <label><input type="checkbox" id="show-trim" checked> Trim</label>
+      <label><input type="checkbox" id="show-bleed" checked> Bleed</label>
+      <label><input type="checkbox" id="show-media"> Page edge</label>
+      <span class="spacer"></span>
+      <button id="zoom-out" aria-label="Zoom out">−</button>
+      <button id="zoom-fit">Fit</button>
+      <button id="zoom-in" aria-label="Zoom in">+</button>
+      <span id="zoom-label" class="muted"></span>
+    </div>
+    <div id="canvas" class="canvas">
+      <div id="empty" class="empty">
+        <p class="lead">Open a PDF to check it</p>
+        <p class="muted">The file is read where it is. Nothing is uploaded, and nothing is changed.</p>
+        <form id="path-form" class="path-form">
+          <input id="path" placeholder="/Users/you/Jobs/artwork.pdf" aria-label="Path to a PDF">
+          <button type="submit">Open</button>
+        </form>
+        <p id="path-error" class="error" hidden></p>
+      </div>
+      <div id="sheet" class="sheet" hidden>
+        <img id="page-img" alt="">
+        <svg id="overlay" class="overlay" aria-hidden="true"></svg>
+      </div>
+      <div id="busy" class="busy" hidden>Checking…</div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div id="summary" class="summary"></div>
+    <div id="findings" class="findings"></div>
+    <details id="passed" class="passed" hidden><summary></summary><p></p></details>
+  </aside>
+</main>
+<script>window.PREFLIGHT_KEY = "__KEY__";</script>
+<script src="/static/app.js?key=__KEY__"></script>
+</body>
+</html>

@@ -510,6 +510,39 @@ converted, on 9 pages, in about 25 seconds. PANTONE 283 C and 285 C are left
 alone: they share one two-ink gradient on page 4. Converting that needs a
 sampled function, which is not built yet.
 
+## The app: milestone 1, Inspect (added 2026-11-18)
+
+`preflight app [file.pdf]` starts a small web server on this computer and
+opens it in the browser. Built with Python's own web server and plain
+HTML/CSS/JS, with no new dependencies and no internet use.
+
+- **Security.** It answers only on 127.0.0.1. Every request needs the key the
+  app printed. The Host header must name this machine, which guards against
+  DNS rebinding. Requests whose Origin is another site are refused, so a
+  website open in another tab cannot drive it. Files are read where they are;
+  nothing is uploaded. The development launch config uses a fixed key and is
+  kept out of git.
+- **Read-only.** Milestone 1 has no way to write anything.
+- **Screen.** Page thumbnails; the page rendered with colour management off;
+  trim, bleed and page edge drawn as switchable lines, including a trim
+  inferred from crop marks; the findings list, fails first. Clicking a finding
+  jumps to its page and outlines its objects, padded so that a word or
+  hairline still shows when the page is fitted. Zoom, arrow keys for pages,
+  light and dark mode, and a narrow-window layout. "Open PDF" uses the Mac's
+  own file chooser; a path can also be typed.
+- **Engine.** `Result.geometry` gives the boxes each page was measured from,
+  and the server converts every position to the rendered page with
+  `device_matrix`.
+- **Threads.** PyMuPDF is not safe to use from several threads, so the checks
+  and all page renders take turns behind one lock. The page in view loads
+  before the thumbnails.
+
+Tried in the browser on the catalogue (56 pages: white overprint on page 48
+outlined) and the 509 MB banner (the 200% black Multiply area outlined, and
+the trim inferred from its crop marks).
+
+Next: milestone 2, Propose (a fix's before/after on the canvas).
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

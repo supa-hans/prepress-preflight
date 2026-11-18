@@ -9,3 +9,5 @@ __pycache__/
 build/
 dist/
 .DS_Store
+# local development launch config (uses a fixed key)
+.claude/launch.json

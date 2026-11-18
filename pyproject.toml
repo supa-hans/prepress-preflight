@@ -18,5 +18,8 @@ preflight = "prepress_preflight.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+prepress_preflight = ["app/static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

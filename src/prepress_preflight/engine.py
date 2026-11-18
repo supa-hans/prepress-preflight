@@ -11,11 +11,14 @@ from .model import FAIL, NOTE, UNCHECKED, WARN, Finding, merge
 
 
 class Result:
-    def __init__(self, path, page_count, findings, check_names):
+    def __init__(self, path, page_count, findings, check_names, geometry=None):
         self.path = path
         self.page_count = page_count
         self.findings: list[Finding] = findings
         self.check_names: list[str] = check_names
+        # Per page, the boxes the checks measured from (PDF points), including a
+        # trim inferred from crop marks. For displays; the report does not need it.
+        self.geometry: list[dict] = geometry or []
 
     def count(self, severity: str) -> int:
         return sum(1 for f in self.findings if f.severity == severity)
@@ -66,6 +69,10 @@ def run(path: str, options: Options | None = None) -> Result:
         for text, pages in problems.items():
             findings.append(Finding("Reading the file", UNCHECKED,
                                     f"Some content could not be checked: {text}", sorted(pages)))
-        return Result(path, len(doc.pages), merge(findings), [c.name for c in checks])
+        geometry = [{"page": p.number, "media": p.media.as_list(), "trim": p.trim.as_list(), "bleed": p.bleed.as_list(),
+                     "has_trim": p.has_trim, "has_bleed": p.has_bleed, "trim_inferred": p.trim_inferred,
+                     "declared_trim": p.declared_trim.as_list() if p.declared_trim else None}
+                    for p in doc.pages]
+        return Result(path, len(doc.pages), merge(findings), [c.name for c in checks], geometry)
     finally:
         doc.close()

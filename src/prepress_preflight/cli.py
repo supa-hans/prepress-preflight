@@ -20,6 +20,9 @@ def main(argv=None) -> int:
     if argv[:1] == ["fix"]:
         from .fix_cli import main as fix_main
         return fix_main(argv[1:])
+    if argv[:1] == ["app"]:
+        from .app.server import main as app_main
+        return app_main(argv[1:])
     if argv[:1] == ["actions"]:
         from .actions import main as actions_main
         return actions_main(argv[1:])

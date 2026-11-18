@@ -1,0 +1,264 @@
+"""The local app: a small web server on this computer, and the pages it serves.
+
+`preflight app [file.pdf]` starts it and opens a browser window. It answers
+only on 127.0.0.1, only to requests carrying the key it printed (so other web
+pages open in the same browser cannot drive it), and only when the Host header
+names this machine (so a website cannot reach it through DNS tricks). Nothing
+is uploaded anywhere: files are read where they are on disk.
+
+Milestone 1 (inspect) is read-only: it opens a file, runs the same checks as
+the command line, and renders pages. It has no way to write anything.
+"""
+from __future__ import annotations
+
+import json
+import mimetypes
+import os
+import secrets
+import subprocess
+import sys
+import threading
+import webbrowser
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+import pymupdf
+
+from ..checks import Options
+from ..document import device_matrix
+from ..engine import run
+
+STATIC = Path(__file__).parent / "static"
+MAX_PIXELS = 16_000_000  # the largest page render the app will make
+pymupdf.TOOLS.set_icc(False)  # show the file's own CMYK values, as the checks do
+# PyMuPDF is not safe to use from several threads at once; renders take turns.
+RENDER_LOCK = threading.Lock()
+
+
+class Session:
+    """The file that is open, its report, and cached page renders. One per app."""
+
+    def __init__(self, options: Options):
+        self.options = options
+        self.lock = threading.Lock()
+        self.path: str | None = None
+        self.report: dict | None = None
+        self.error: str | None = None
+        self.busy = False
+        self._renders: dict = {}
+
+    def open(self, path: str) -> None:
+        path = os.path.abspath(os.path.expanduser(path))
+        if not path.lower().endswith(".pdf") or not os.path.isfile(path):
+            raise ValueError("Choose a PDF file that exists")
+        with self.lock:
+            self.path, self.report, self.error, self.busy = path, None, None, True
+            self._renders.clear()
+        threading.Thread(target=self._check, args=(path,), daemon=True).start()
+
+    def _check(self, path: str) -> None:
+        try:
+            with RENDER_LOCK:  # the checks render too
+                result = run(path, self.options)
+            report = _report(result)
+        except Exception as exc:  # shown to the user; never a pass
+            with self.lock:
+                if self.path == path:
+                    self.error, self.busy = f"The file could not be checked ({type(exc).__name__}: {exc})", False
+            return
+        with self.lock:
+            if self.path == path:
+                self.report, self.busy = report, False
+
+    def state(self) -> dict:
+        with self.lock:
+            return {"path": self.path, "name": os.path.basename(self.path) if self.path else None,
+                    "busy": self.busy, "error": self.error, "report": self.report}
+
+    def render(self, number: int, width: int) -> bytes:
+        """PNG of a page, `width` pixels wide (capped), cached."""
+        path = self.path
+        if path is None:
+            raise ValueError("No file is open")
+        key = (path, number, width)
+        if key in self._renders:
+            return self._renders[key]
+        with RENDER_LOCK, pymupdf.open(path) as doc:
+            if not 1 <= number <= doc.page_count:
+                raise ValueError("No such page")
+            page = doc.load_page(number - 1)
+            zoom = width / page.rect.width
+            if page.rect.width * page.rect.height * zoom * zoom > MAX_PIXELS:
+                zoom = (MAX_PIXELS / (page.rect.width * page.rect.height)) ** 0.5
+            png = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False, annots=False).tobytes("png")
+        if len(self._renders) > 64:
+            self._renders.clear()
+        self._renders[key] = png
+        return png
+
+
+def _report(result) -> dict:
+    """The engine's result, with every position given on the rendered page as
+    well: points from the page's top-left corner, after any rotation."""
+    data = result.to_dict()
+    with RENDER_LOCK, pymupdf.open(result.path) as doc:
+        pages = []
+        to_view = {}
+        for g in result.geometry:
+            page = doc.load_page(g["page"] - 1)
+            m = device_matrix(page)
+            to_view[g["page"]] = m
+
+            def view(box, m=m):
+                if box is None:
+                    return None
+                r = (pymupdf.Rect(box) * m).normalize()
+                return [round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2)]
+            pages.append({"page": g["page"], "width": round(page.rect.width, 2), "height": round(page.rect.height, 2),
+                          "media": view(g["media"]), "trim": view(g["trim"]),
+                          "bleed": view(g["bleed"]) if g["has_bleed"] else None,
+                          "declared_trim": view(g["declared_trim"]), "trim_inferred": g["trim_inferred"]})
+        for finding in data["findings"]:
+            for loc in finding["locations"]:
+                m = to_view.get(loc["page"])
+                if m is not None:
+                    r = (pymupdf.Rect(loc["bbox"]) * m).normalize()
+                    loc["view"] = [round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2)]
+    data["page_geometry"] = pages
+    return data
+
+
+def choose_file() -> str | None:
+    """The Mac's own file chooser, through AppleScript. None if cancelled."""
+    if sys.platform != "darwin":
+        return None
+    script = 'POSIX path of (choose file with prompt "Choose a PDF to check" of type {"com.adobe.pdf"})'
+    done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    path = done.stdout.strip()
+    return path or None
+
+
+def make_handler(session: Session, key: str, port_ref: dict):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "preflight"
+
+        def log_message(self, *args):  # quiet
+            pass
+
+        def _send(self, status, body: bytes, kind: str):
+            self.send_response(status)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json(self, status, obj):
+            self._send(status, json.dumps(obj).encode(), "application/json")
+
+        def _allowed(self, query) -> bool:
+            host = (self.headers.get("Host") or "").split(":")[0]
+            if host not in ("127.0.0.1", "localhost"):
+                return False
+            # A browser names the page a request comes from. Only the app's own
+            # pages may call it, so a website open in another tab cannot.
+            origin = self.headers.get("Origin")
+            if origin is not None and urlparse(origin).hostname not in ("127.0.0.1", "localhost"):
+                return False
+            given = (query.get("key") or [""])[0] or self.headers.get("X-Preflight-Key", "")
+            return secrets.compare_digest(given, key)
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            query = parse_qs(url.query)
+            if not self._allowed(query):
+                return self._send(HTTPStatus.FORBIDDEN, b"Forbidden", "text/plain")
+            try:
+                if url.path in ("/", "/index.html"):
+                    page = (STATIC / "index.html").read_text().replace("__KEY__", key)
+                    return self._send(HTTPStatus.OK, page.encode(), "text/html; charset=utf-8")
+                if url.path.startswith("/static/"):
+                    name = url.path[len("/static/"):]
+                    target = (STATIC / name).resolve()
+                    if STATIC.resolve() not in target.parents or not target.is_file():
+                        return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
+                    kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+                    return self._send(HTTPStatus.OK, target.read_bytes(), kind)
+                if url.path == "/api/state":
+                    return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/page":
+                    number = int((query.get("n") or ["1"])[0])
+                    width = max(64, min(4000, int((query.get("w") or ["800"])[0])))
+                    return self._send(HTTPStatus.OK, session.render(number, width), "image/png")
+                return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
+            except ValueError as exc:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+
+        def do_POST(self):
+            url = urlparse(self.path)
+            query = parse_qs(url.query)
+            if not self._allowed(query):
+                return self._send(HTTPStatus.FORBIDDEN, b"Forbidden", "text/plain")
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+            except json.JSONDecodeError:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": "Bad request"})
+            try:
+                if url.path == "/api/open":
+                    path = body.get("path")
+                    if body.get("choose"):
+                        path = choose_file()
+                        if path is None:
+                            return self._json(HTTPStatus.OK, session.state())
+                    if not path:
+                        raise ValueError("Choose a PDF file")
+                    session.open(path)
+                    return self._json(HTTPStatus.OK, session.state())
+                return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
+            except ValueError as exc:
+                return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+
+    return Handler
+
+
+def serve(path: str | None = None, port: int = 0, open_browser: bool = True, options: Options | None = None,
+          key: str | None = None):
+    """Start the app. Returns (server, url); the server runs until shut down."""
+    session = Session(options or Options())
+    key = key or secrets.token_urlsafe(18)
+    port_ref: dict = {}
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(session, key, port_ref))
+    url = f"http://127.0.0.1:{server.server_address[1]}/?key={key}"
+    if path:
+        session.open(path)
+    if open_browser:
+        webbrowser.open(url)
+    return server, url, session
+
+
+def main(argv) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(prog="preflight app", description="Open the preflight app in your browser.")
+    parser.add_argument("file", nargs="?", help="a PDF to open straight away")
+    parser.add_argument("--port", type=int, default=0, help="port to use (default: any free one)")
+    parser.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    parser.add_argument("--key", help=argparse.SUPPRESS)  # fixed key, for development only
+    args = parser.parse_args(argv)
+    try:
+        server, url, _ = serve(args.file, args.port, not args.no_browser, key=args.key)
+    except ValueError as exc:
+        print(f"preflight app: {exc}", file=sys.stderr)
+        return 2
+    print(f"Preflight is open at {url}")
+    print("It runs on this computer only. Press Ctrl+C to stop it.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0

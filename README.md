@@ -36,6 +36,17 @@ preflight *.pdf                       # several files
 
 Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 
+## The app
+
+```sh
+preflight app                 # opens in your browser
+preflight app artwork.pdf     # with a file open
+```
+
+Pages, the findings marked on them, and the trim and bleed boxes. It runs on
+this computer only and reads files where they are. This first version only
+inspects.
+
 ## Fixes
 
 Fixes never change the file you give them. Join several with `+` to run them
