@@ -215,3 +215,88 @@ def test_a_failing_fix_is_reported_not_hidden(app, make, monkeypatch):
     get(base, "/api/preview", data=json.dumps({"fix": "add-bleed", "options": []}).encode())
     preview = wait_preview(base)["preview"]
     assert "verification failed" in preview["error"]
+
+
+# --- review and export
+def post(base, path, body):
+    return json.loads(get(base, path, data=json.dumps(body).encode())[2])
+
+
+def banner_like(make):
+    from test_fixes import banner
+    return banner(make)
+
+
+def test_review_and_export_a_chain(app, make, tmp_path):
+    import hashlib
+    from prepress_preflight.engine import run
+    src = banner_like(make)  # wrong trim box, marks inside it
+    original = hashlib.sha256(open(src, "rb").read()).hexdigest()
+    base = app(src)
+    wait_report(base)
+    post(base, "/api/preview", {"fix": "trim-from-marks", "options": []})
+    wait_preview(base)
+    state = post(base, "/api/keep", {})
+    assert [q["fix"] for q in state["queue"]] == ["trim-from-marks"]
+    # the next preview is made on top of the kept fix
+    post(base, "/api/preview", {"fix": "add-marks", "options": ["--clip-to-bleed"]})
+    preview = wait_preview(base)["preview"]
+    assert preview["error"] is None and not preview["empty"]
+    state = post(base, "/api/keep", {})
+    assert [q["fix"] for q in state["queue"]] == ["trim-from-marks", "add-marks"]
+    assert state["queue_effect"]["status_after"] in ("PASS", "WARN")
+    dst = tmp_path / "out" / "banner fixed.pdf"
+    dst.parent.mkdir()
+    state = post(base, "/api/export", {"path": str(dst), "confirm": True})
+    assert state["written"] == str(dst) and dst.exists()
+    assert hashlib.sha256(open(src, "rb").read()).hexdigest() == original
+    with open(dst, "rb") as f:
+        assert hashlib.sha256(f.read(os.path.getsize(src))).hexdigest() == original
+    assert [f for f in run(str(dst)).findings if f.check == "Trim marks" and "agree" in f.message]
+
+
+def test_export_needs_a_confirmation_and_a_new_name(app, make, tmp_path):
+    base = app(no_bleed(make))
+    wait_report(base)
+    post(base, "/api/preview", {"fix": "add-bleed", "options": []})
+    wait_preview(base)
+    post(base, "/api/keep", {})
+    dst = tmp_path / "out.pdf"
+    for body in ({"path": str(dst)}, {"path": str(dst), "confirm": "yes"}):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            post(base, "/api/export", body)
+        assert e.value.code == 400
+    assert not dst.exists()
+    dst.write_bytes(b"keep me")
+    with pytest.raises(urllib.error.HTTPError):
+        post(base, "/api/export", {"path": str(dst), "confirm": True})
+    assert dst.read_bytes() == b"keep me"
+
+
+def test_export_with_nothing_kept_is_refused(app, make, tmp_path):
+    base = app(no_bleed(make))
+    wait_report(base)
+    with pytest.raises(urllib.error.HTTPError):
+        post(base, "/api/export", {"path": str(tmp_path / "out.pdf"), "confirm": True})
+
+
+def test_removing_a_step_rebuilds_the_rest(app, make):
+    base = app(banner_like(make))
+    wait_report(base)
+    for fix, opts in (("trim-from-marks", []), ("add-marks", ["--clip-to-bleed"])):
+        post(base, "/api/preview", {"fix": fix, "options": opts})
+        wait_preview(base)
+        post(base, "/api/keep", {})
+    post(base, "/api/remove", {"index": 1})
+    state = wait_preview(base)
+    assert [q["fix"] for q in state["queue"]] == ["trim-from-marks"]
+    post(base, "/api/remove", {"index": 0})
+    state = wait_preview(base)
+    assert state["queue"] == [] and state["queue_effect"] is None
+
+
+def test_keep_needs_a_preview_that_changes_something(app, make):
+    base = app(make(b"0 0 0 1 k 100 100 50 50 re f"))
+    wait_report(base)
+    with pytest.raises(urllib.error.HTTPError):
+        post(base, "/api/keep", {})

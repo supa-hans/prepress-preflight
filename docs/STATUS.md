@@ -561,7 +561,39 @@ through the same checks, so a bad value is refused with the reason.
 Tried on the place cards: "Fix: add-bleed" with marks and clip gave a 114-page
 preview showing the made bleed and marks, FAIL -> PASS.
 
-Next: milestone 3, Review and export (queue fixes, then write the new file).
+## The app: milestone 3, Review and export (added 2026-11-18)
+
+"Add to review" keeps a previewed fix. The review list is an action list: the
+next preview is made on top of what is already kept, so each fix sees the file
+as the steps before it left it. Review shows each step, with its options and
+what it does, and the effect of all of them together. Removing a step runs the
+rest again from the original. The canvas flips between the original and the
+result.
+
+Export: choose where to save (the Mac's save dialog, or a typed path), press
+Export, then confirm in a dialog that names the file and says the original is
+not changed. The server refuses an export without that confirmation, over an
+existing file, or over the original. The result is checked once more (the
+original's bytes intact at its start, structure sound) and copied to the new
+file. "Show in Finder" reveals it.
+
+Tried end to end in the browser on the place cards: add-bleed with marks,
+kept, exported. The exported file starts with the original's bytes unchanged,
+and preflight on it passes with "Trim marks agree with the trim box".
+
+Bugs found while trying it, both fixed:
+
+- The panels' layout style overrode the hidden attribute, so the Export panel
+  and its confirm button showed on the Review screen. Nothing could have been
+  written without a path, but a confirmation must never appear unasked.
+  `[hidden]` now always wins.
+- A deadlock: rebuilding the review list held the render lock and called a
+  function that takes it again. The lock is now re-entrant, and the rebuild no
+  longer takes it twice.
+
+The four states from the interface model are now all in place. Next for the
+app: polish (drag and drop, recent files, a separation viewer, a Mac app
+wrapper).
 
 ## Next tasks, in order
 

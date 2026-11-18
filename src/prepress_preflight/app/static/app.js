@@ -5,7 +5,8 @@
   const ORDER = { fail: 0, unchecked: 1, warn: 2, note: 3 };
   const LABEL = { fail: "Fail", unchecked: "Could not check", warn: "Warn", note: "Note" };
   const state = { report: null, page: 1, zoom: null, selected: null, path: null, mode: "inspect", which: "before",
-                  preview: null, previewBusy: false };
+                  preview: null, previewBusy: false, queue: [], queueReport: null, queueEffect: null,
+                  exported: null };
 
   // What each fix asks for. Field values become the same options the command line takes.
   const FIXES = {
@@ -37,7 +38,9 @@
   }
 
   function pageImage(n, width, which = "before") {
-    const tag = which === "after" && state.preview ? `&which=after&v=${encodeURIComponent(state.preview.fix + state.preview.options.join(" "))}` : "";
+    let tag = "";
+    if (which === "after" && state.preview) tag = `&which=after&v=${encodeURIComponent(state.preview.fix + state.preview.options.join(" "))}`;
+    if (which === "base") tag = `&which=base&v=${state.queue.length}-${encodeURIComponent(state.queue.map((q) => q.fix).join("+"))}`;
     return `/api/page?n=${n}&w=${Math.round(width)}${tag}&key=${encodeURIComponent(KEY)}`;
   }
 
@@ -81,8 +84,17 @@
     state.preview = s.preview;
     state.previewBusy = s.preview_busy;
     if (previewChanged) { if (!state.preview || state.preview.empty) state.which = "before"; renderProposal(); }
-    $("preview-status").textContent = s.preview_busy ? "Making the preview…" : "";
+    $("preview-status").textContent = s.preview_busy ? "Working…" : "";
     $("preview").disabled = s.preview_busy;
+    const queueChanged = JSON.stringify(s.queue) !== JSON.stringify(state.queue) || s.exported !== state.exported;
+    state.queue = s.queue || [];
+    state.queueReport = s.queue_report;
+    state.queueEffect = s.queue_effect;
+    state.exported = s.exported;
+    $("export-error").hidden = !s.export_error;
+    $("export-error").textContent = s.export_error || "";
+    if (queueChanged) renderReview();
+    $("keep").hidden = !(state.preview && !state.preview.empty && !state.preview.error) || s.preview_busy;
     $("empty").hidden = true;
     $("sheet").hidden = false;
     const status = $("status");
@@ -94,13 +106,23 @@
     renderPage();
   }
 
+  // What the canvas shows: the original, the result of the review list ("base"), or a preview.
+  function view() {
+    const queued = state.queue.length > 0 && state.queueReport;
+    if (state.mode === "propose") {
+      if (state.which === "after" && state.preview && state.preview.report) return ["after", state.preview.report];
+      return queued ? ["base", state.queueReport] : ["before", state.report];
+    }
+    if ((state.mode === "review" || state.mode === "export") && queued && state.which === "after") return ["base", state.queueReport];
+    return ["before", state.report];
+  }
+
   function showingAfter() {
-    return state.mode === "propose" && state.which === "after" && state.preview && state.preview.report;
+    return view()[0] !== "before";
   }
 
   function geometry(n) {
-    const report = showingAfter() ? state.preview.report : state.report;
-    return report.page_geometry.find((g) => g.page === n);
+    return view()[1].page_geometry.find((g) => g.page === n);
   }
 
   function failPages() {
@@ -193,7 +215,7 @@
       list.append(b);
     }
     const passed = $("passed");
-    passed.hidden = !r.passed_checks.length;
+    passed.hidden = !r.passed_checks.length || state.mode === "export";
     passed.querySelector("summary").textContent = `Passed ${r.passed_checks.length} checks`;
     passed.querySelector("p").textContent = r.passed_checks.join(", ");
   }
@@ -222,7 +244,7 @@
     const w = g.width * zoom, h = g.height * zoom;
     const img = $("page-img");
     const want = Math.min(4000, Math.ceil((w * (window.devicePixelRatio || 1)) / 200) * 200);
-    const src = pageImage(state.page, want, showingAfter() ? "after" : "before");
+    const src = pageImage(state.page, want, view()[0]);
     if (img.dataset.src !== src) {
       img.dataset.src = src;
       img.onload = () => { if (!state.mainLoaded) loadThumbs(); };
@@ -267,12 +289,18 @@
 
   function setMode(mode) {
     state.mode = mode;
-    $("mode-inspect").classList.toggle("on", mode === "inspect");
-    $("mode-propose").classList.toggle("on", mode === "propose");
-    $("mode-inspect").setAttribute("aria-selected", mode === "inspect");
-    $("mode-propose").setAttribute("aria-selected", mode === "propose");
+    for (const m of ["inspect", "propose", "review", "export"]) {
+      $(`mode-${m}`).classList.toggle("on", mode === m);
+      $(`mode-${m}`).setAttribute("aria-selected", mode === m);
+    }
     $("propose").hidden = mode !== "propose";
-    $("which").hidden = mode !== "propose";
+    $("review").hidden = mode !== "review";
+    $("export").hidden = mode !== "export";
+    $("confirm").hidden = true;
+    $("which").hidden = mode === "inspect";
+    for (const id of ["summary", "findings", "passed"]) $(id).hidden = mode === "export" || (id === "passed" && !state.report);
+    if (mode === "review" || mode === "export") setWhich(state.queue.length ? "after" : "before");
+    if (mode === "export") renderExport();
     if (state.report) renderPage();
   }
 
@@ -379,11 +407,115 @@
       const add = (cls, label, text) => { const d = document.createElement("div"); d.className = `change ${cls}`; d.textContent = `${label} ${text}`; out.append(d); };
       p.effect.gone.forEach((f) => add("gone", "Gone:", `${f.check}: ${f.message}`));
       p.effect.changed.forEach((f) => add("", "Changed:", `${f.check}: ${f.after}`));
-      p.effect.new.forEach((f) => add("new", "New:", `${f.check}: ${f.message}`));
+      p.effect.new.forEach((f) => add(f.severity === "note" ? "note" : "new", f.severity === "note" ? "Now:" : "New:", `${f.check}: ${f.message}`));
       if (!p.effect.gone.length && !p.effect.changed.length && !p.effect.new.length) add("", "", "No change to fails or warnings.");
       setWhich("after");
     }
   }
+
+  async function keep() {
+    try { show(await api("/api/keep", { method: "POST", body: "{}" })); setMode("review"); }
+    catch (e) { $("preview-status").textContent = e.message; }
+  }
+
+  async function removeStep(i) {
+    try { show(await api("/api/remove", { method: "POST", body: JSON.stringify({ index: i }) })); poll(); }
+    catch (e) { $("queue-effect").textContent = e.message; }
+  }
+
+  function renderReview() {
+    $("mode-review").innerHTML = "Review" + (state.queue.length ? ` <span class="count">${state.queue.length}</span>` : "");
+    const ol = $("queue");
+    ol.textContent = "";
+    state.queue.forEach((q, i) => {
+      const li = document.createElement("li");
+      const head = document.createElement("div");
+      head.className = "q-head";
+      const name = document.createElement("span");
+      name.className = "q-name";
+      name.textContent = q.fix;
+      const remove = document.createElement("button");
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove ${q.fix}`);
+      remove.onclick = () => removeStep(i);
+      head.append(name, remove);
+      const opts = document.createElement("div");
+      opts.className = "q-opts";
+      opts.textContent = q.options.length ? q.options.join(" ") : "default options";
+      const what = document.createElement("div");
+      what.textContent = q.reasons.length ? q.reasons[0].text + (q.reasons.length > 1 ? ` (and ${q.reasons.length - 1} more)` : "") : "";
+      li.append(head, opts, what);
+      ol.append(li);
+    });
+    const out = $("queue-effect");
+    out.textContent = "";
+    if (!state.queue.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Nothing kept yet. Preview a fix in Propose, then add it to review.";
+      out.append(p);
+    } else if (state.queueEffect) {
+      const e = state.queueEffect;
+      const h = document.createElement("h3");
+      h.textContent = `All together: ${e.status_before} → ${e.status_after}`;
+      out.append(h);
+      const add = (cls, label, text) => { const d = document.createElement("div"); d.className = `change ${cls}`; d.textContent = `${label} ${text}`; out.append(d); };
+      e.gone.forEach((f) => add("gone", "Gone:", `${f.check}: ${f.message}`));
+      e.changed.forEach((f) => add("", "Changed:", `${f.check}: ${f.after}`));
+      e.new.forEach((f) => add(f.severity === "note" ? "note" : "new", f.severity === "note" ? "Now:" : "New:", `${f.check}: ${f.message}`));
+    }
+    if (state.mode === "export") renderExport();
+  }
+
+  function renderExport() {
+    const n = state.queue.length;
+    $("export-summary").textContent = n
+      ? `${n} fix${n > 1 ? "es" : ""} will be written to a new file: ${state.queue.map((q) => q.fix).join(", then ")}.`
+      : "Nothing to export yet. Keep a fix in Review first.";
+    $("export-go").disabled = !n;
+    $("export-choose").disabled = !n;
+    $("export-done").hidden = !state.exported;
+    $("export-written").textContent = state.exported ? `Written and verified: ${state.exported}` : "";
+  }
+
+  async function chooseSaveName() {
+    try {
+      const r = await api("/api/save-name", { method: "POST", body: "{}" });
+      if (r.path) $("export-path").value = r.path;
+    } catch (e) { $("export-error").textContent = e.message; $("export-error").hidden = false; }
+  }
+
+  function askExport() {
+    const dest = $("export-path").value.trim();
+    $("export-error").hidden = true;
+    if (!dest) { $("export-error").textContent = "Choose where to save the new file first."; $("export-error").hidden = false; return; }
+    const n = state.queue.length;
+    $("confirm-text").textContent = `Write ${n} fix${n > 1 ? "es" : ""} to the new file ${dest}? The original is not changed.`;
+    $("confirm").hidden = false;
+    $("confirm-yes").focus();
+  }
+
+  async function doExport() {
+    $("confirm").hidden = true;
+    $("export-go").disabled = true;
+    try {
+      show(await api("/api/export", { method: "POST", body: JSON.stringify({ path: $("export-path").value.trim(), confirm: true }) }));
+    } catch (e) {
+      $("export-error").textContent = e.message;
+      $("export-error").hidden = false;
+    }
+    renderExport();
+  }
+
+  $("keep").onclick = keep;
+  $("mode-review").onclick = () => setMode("review");
+  $("mode-export").onclick = () => setMode("export");
+  $("export-choose").onclick = chooseSaveName;
+  $("export-go").onclick = askExport;
+  $("confirm-yes").onclick = doExport;
+  $("confirm-no").onclick = () => { $("confirm").hidden = true; };
+  $("export-path").oninput = () => { $("export-error").hidden = true; };
+  $("reveal").onclick = () => api("/api/reveal", { method: "POST", body: "{}" });
 
   const fixSelect = $("fix");
   for (const name of Object.keys(FIXES)) { const o = document.createElement("option"); o.value = name; o.textContent = name; fixSelect.append(o); }

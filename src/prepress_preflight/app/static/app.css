@@ -16,6 +16,8 @@
   }
 }
 * { box-sizing: border-box; }
+/* Hidden means hidden, whatever display a class gives (dialogs and panels rely on it). */
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
 button, input { font: inherit; color: inherit; }
 button { background: var(--panel); border: 0.5px solid var(--line-strong); border-radius: var(--radius); padding: 4px 12px; cursor: pointer; }
@@ -102,3 +104,13 @@ input:not([type]) { background: var(--panel); border: 0.5px solid var(--line-str
 .change.gone { border-color: var(--trim); }
 .change.new { border-color: var(--hit); }
 .suggest { align-self: flex-start; font-size: 12px; padding: 2px 8px; color: var(--accent); }
+
+.queue { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.queue li .q-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.queue li .q-name { font-weight: 500; }
+.queue li .q-opts { color: var(--muted); font-size: 12px; }
+.queue li button { font-size: 12px; padding: 1px 8px; }
+.confirm { border: 2px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+.confirm p { margin: 0; }
+.mode .count { font-size: 11px; background: var(--accent-bg); color: var(--accent); border-radius: 8px; padding: 0 6px; margin-left: 4px; }
+.change.note { border-color: var(--line-strong); }

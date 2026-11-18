@@ -15,8 +15,8 @@
   <div class="modes" role="tablist" aria-label="Mode">
     <button class="mode on" id="mode-inspect" role="tab" aria-selected="true">Inspect</button>
     <button class="mode" id="mode-propose" role="tab" aria-selected="false">Propose</button>
-    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Review</button>
-    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Export</button>
+    <button class="mode" id="mode-review" role="tab" aria-selected="false">Review</button>
+    <button class="mode" id="mode-export" role="tab" aria-selected="false">Export</button>
   </div>
   <div class="actions">
     <button id="open">Open PDF</button>
@@ -71,7 +71,36 @@
       </div>
       <p class="muted small">A preview is written to a private temporary file, verified, and shown here. Nothing is saved to your folders.</p>
       <div id="proposal" class="proposal"></div>
+      <button id="keep" hidden>Add to review</button>
     </section>
+    <section id="review" class="propose" hidden>
+      <p class="muted small">The fixes you keep, in order. Each is applied to the result of the ones before it.</p>
+      <ol id="queue" class="queue"></ol>
+      <div id="queue-effect" class="proposal"></div>
+    </section>
+    <section id="export" class="propose" hidden>
+      <p id="export-summary"></p>
+      <label class="field">Save the fixed copy as
+        <input id="export-path" placeholder="/Users/you/Jobs/artwork fixed.pdf">
+      </label>
+      <div class="row">
+        <button id="export-choose">Choose…</button>
+        <button id="export-go" class="primary">Export</button>
+      </div>
+      <p class="muted small">A new file is written; the original is never changed. The result is checked again before it is saved.</p>
+      <p id="export-error" class="error" hidden></p>
+      <div id="export-done" hidden>
+        <p id="export-written"></p>
+        <button id="reveal">Show in Finder</button>
+      </div>
+    </section>
+    <div id="confirm" class="confirm" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-text">
+      <p id="confirm-text"></p>
+      <div class="row">
+        <button id="confirm-yes" class="primary">Write the new file</button>
+        <button id="confirm-no">Cancel</button>
+      </div>
+    </div>
     <div id="summary" class="summary"></div>
     <div id="findings" class="findings"></div>
     <details id="passed" class="passed" hidden><summary></summary><p></p></details>

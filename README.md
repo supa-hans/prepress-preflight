@@ -43,9 +43,10 @@ preflight app                 # opens in your browser
 preflight app artwork.pdf     # with a file open
 ```
 
-Pages, the findings marked on them, and the trim and bleed boxes. It runs on
-this computer only and reads files where they are. This first version only
-inspects.
+Inspect a file (pages, the findings marked on them, trim and bleed), preview
+a fix as before and after, keep the fixes you want in a review list, and
+export them to a new file after confirming. It runs on this computer only,
+reads files where they are, and never changes the original.
 
 ## Fixes
 

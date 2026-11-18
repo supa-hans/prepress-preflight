@@ -40,13 +40,15 @@ from ..document import device_matrix
 from ..engine import run
 from ..fix_cli import _settings
 from ..fixes import FIXES
+from ..fixes.chain import deliver, run_chain
 from ..model import FAIL, UNCHECKED, WARN
 
 STATIC = Path(__file__).parent / "static"
 MAX_PIXELS = 16_000_000  # the largest page render the app will make
 pymupdf.TOOLS.set_icc(False)  # show the file's own CMYK values, as the checks do
 # PyMuPDF is not safe to use from several threads at once; renders take turns.
-RENDER_LOCK = threading.Lock()
+# Re-entrant, so a function that takes it may call another that does too.
+RENDER_LOCK = threading.RLock()
 
 
 class Session:
@@ -64,6 +66,14 @@ class Session:
         self.preview: dict | None = None  # the current proposal and its effect
         self.preview_path: str | None = None
         self.preview_busy = False
+        # The review queue: fixes kept, in order, each applied to the result of
+        # the ones before. `base_path` is the result of the whole queue (the
+        # original when it is empty); new previews are made on top of it.
+        self.queue: list[dict] = []
+        self.base_path: str | None = None
+        self.base_report: dict | None = None
+        self.exported: str | None = None
+        self.export_error: str | None = None
 
     def open(self, path: str) -> None:
         path = os.path.abspath(os.path.expanduser(path))
@@ -73,6 +83,7 @@ class Session:
             self.path, self.report, self.error, self.busy = path, None, None, True
             self._renders.clear()
             self._drop_preview()
+            self._drop_queue()
         threading.Thread(target=self._check, args=(path,), daemon=True).start()
 
     def _check(self, path: str) -> None:
@@ -88,14 +99,26 @@ class Session:
         with self.lock:
             if self.path == path:
                 self.report, self.busy = report, False
+                self.base_path, self.base_report = path, report
 
     def state(self) -> dict:
         with self.lock:
             return {"path": self.path, "name": os.path.basename(self.path) if self.path else None,
                     "busy": self.busy, "error": self.error, "report": self.report,
-                    "preview": self.preview, "preview_busy": self.preview_busy}
+                    "preview": self.preview, "preview_busy": self.preview_busy,
+                    "queue": [{k: v for k, v in step.items() if k != "output"} for step in self.queue],
+                    "queue_report": self.base_report if self.queue else None,
+                    "queue_effect": effect(self.report, self.base_report) if self.queue and self.base_report else None,
+                    "exported": self.exported, "export_error": self.export_error}
 
     # ---- propose ----------------------------------------------------------
+
+    def _drop_queue(self):
+        for step in self.queue:
+            if step.get("output") and os.path.exists(step["output"]):
+                os.remove(step["output"])
+        self.queue, self.base_path, self.base_report = [], self.path, self.report
+        self.exported = self.export_error = None
 
     def _drop_preview(self):
         if self.preview_path and os.path.exists(self.preview_path):
@@ -115,13 +138,14 @@ class Session:
             if self.path is None or self.report is None:
                 raise ValueError("Open a file and wait for its check first")
             if self.preview_busy:
-                raise ValueError("A preview is already being made")
+                raise ValueError("Something is already being worked on")
             self._drop_preview()
             self.preview_busy = True
-            path, report = self.path, self.report
-        threading.Thread(target=self._preview, args=(path, report, fix, tokens, options, extra), daemon=True).start()
+            base, report = self.base_path, self.base_report
+        threading.Thread(target=self._preview, args=(self.path, base, report, fix, tokens, options, extra),
+                         daemon=True).start()
 
-    def _preview(self, path, before, fix, tokens, options, extra):
+    def _preview(self, original, path, before, fix, tokens, options, extra):
         propose, write = FIXES[fix]
         out = os.path.join(self.workdir, f"preview-{secrets.token_hex(4)}.pdf")
         result = {"fix": fix, "options": tokens, "reasons": [], "skipped": [], "changes": [], "empty": True,
@@ -146,18 +170,106 @@ class Session:
                 os.remove(out)
             out = None
         with self.lock:
-            if self.path == path:
+            if self.path == original and self.base_path == path:
                 self.preview, self.preview_path, self.preview_busy = result, (out if not result["empty"] else None), False
-            elif out and os.path.exists(out):
-                os.remove(out)
+            else:
+                self.preview_busy = False
+                if out and os.path.exists(out):
+                    os.remove(out)
+
+    # ---- review -----------------------------------------------------------
+
+    def keep_preview(self) -> None:
+        """Add the current preview to the review queue: its result becomes the base."""
+        with self.lock:
+            if self.preview_busy:
+                raise ValueError("Something is already being worked on")
+            if not self.preview or self.preview.get("empty") or self.preview.get("error") or not self.preview_path:
+                raise ValueError("Preview a fix that changes something first")
+            self.queue.append({"fix": self.preview["fix"], "options": self.preview["options"],
+                               "reasons": self.preview["reasons"], "output": self.preview_path})
+            self.base_path, self.base_report = self.preview_path, self.preview["report"]
+            self.preview, self.preview_path = None, None
+            self.exported = self.export_error = None
+
+    def remove_step(self, index: int) -> None:
+        """Take a fix out of the queue. The queue is run again from the original."""
+        with self.lock:
+            if self.preview_busy:
+                raise ValueError("Something is already being worked on")
+            if not 0 <= index < len(self.queue):
+                raise ValueError("No such step")
+            self._drop_preview()
+            steps = [(q["fix"], q["options"]) for i, q in enumerate(self.queue) if i != index]
+            self._drop_queue()
+            if not steps:
+                return
+            self.preview_busy = True
+            path = self.path
+        threading.Thread(target=self._rebuild, args=(path, steps), daemon=True).start()
+
+    def _rebuild(self, path, steps):
+        error = None
+        try:
+            settings = []
+            for fix, tokens in steps:
+                options, extra = _settings(_step_parser().parse_args(tokens))
+                settings.append((fix, options, extra))
+            folder = tempfile.mkdtemp(dir=self.workdir)
+            with RENDER_LOCK:
+                done = run_chain(path, settings, FIXES, folder)
+                outputs = [s.output for s in done if s.output]
+                result = run(outputs[-1], settings[0][1]) if outputs else None
+            report = _report(result) if result else None
+        except Exception as exc:
+            error = f"The review list could not be rebuilt ({type(exc).__name__}: {exc}); it has been cleared"
+            done, report = [], None
+        with self.lock:
+            self.preview_busy = False
+            if self.path != path:
+                return
+            if error:
+                self.export_error = error
+                return
+            for step, (_, tokens) in zip(done, steps):  # in the same order as asked
+                if step.output:
+                    self.queue.append({"fix": step.name, "options": tokens,
+                                       "reasons": [{"page": p, "text": t} for p, t in step.proposal.reasons],
+                                       "output": step.output})
+            if self.queue:
+                self.base_path, self.base_report = self.queue[-1]["output"], report
+
+    # ---- export -----------------------------------------------------------
+
+    def export(self, dst: str) -> str:
+        """Write the queue's result to a new file. Only after the user confirmed it."""
+        with self.lock:
+            if self.preview_busy:
+                raise ValueError("Something is already being worked on")
+            if not self.queue:
+                raise ValueError("There is nothing in the review list to export")
+            original, final = self.path, self.base_path
+        dst = os.path.abspath(os.path.expanduser(dst))
+        if not dst.lower().endswith(".pdf"):
+            dst += ".pdf"
+        if os.path.exists(dst):
+            raise ValueError(f"{os.path.basename(dst)} already exists; choose a new name")
+        if not os.path.isdir(os.path.dirname(dst)):
+            raise ValueError("That folder does not exist")
+        with RENDER_LOCK:
+            deliver(original, final, dst)  # checks the original's bytes are intact first
+        with self.lock:
+            self.exported, self.export_error = dst, None
+        return dst
 
     def close(self):
         shutil.rmtree(self.workdir, ignore_errors=True)
 
     def render(self, number: int, width: int, which: str = "before") -> bytes:
         """PNG of a page, `width` pixels wide (capped), cached. `which` is
-        "before" (the file as it is) or "after" (the current preview)."""
-        path = self.preview_path if which == "after" else self.path
+        "before" (the file as it is), "base" (after the review queue) or
+        "after" (the current preview)."""
+        path = {"after": self.preview_path, "base": self.base_path}.get(which, self.path)
         if path is None:
             raise ValueError("No file is open" if which != "after" else "There is no preview")
         key = (path, number, width)
@@ -254,6 +366,18 @@ def suggest(report: dict) -> list[list[str]]:
     return out
 
 
+def choose_save_name(original: str) -> str | None:
+    """The Mac's own save dialog, through AppleScript. None if cancelled."""
+    if sys.platform != "darwin":
+        return None
+    stem = os.path.splitext(os.path.basename(original))[0].replace('"', "")
+    folder = os.path.dirname(original).replace('"', "")
+    script = (f'POSIX path of (choose file name with prompt "Save the fixed copy as" '
+              f'default name "{stem} fixed.pdf" default location (POSIX file "{folder}"))')
+    done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    return done.stdout.strip() or None
+
+
 def choose_file() -> str | None:
     """The Mac's own file chooser, through AppleScript. None if cancelled."""
     if sys.platform != "darwin":
@@ -345,6 +469,27 @@ def make_handler(session: Session, key: str, port_ref: dict):
                         raise ValueError("Choose a PDF file")
                     session.open(path)
                     return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/keep":
+                    session.keep_preview()
+                    return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/remove":
+                    session.remove_step(int(body.get("index", -1)))
+                    return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/save-name":
+                    state = session.state()
+                    if not state["path"]:
+                        raise ValueError("No file is open")
+                    return self._json(HTTPStatus.OK, {"path": choose_save_name(state["path"])})
+                if url.path == "/api/export":
+                    if body.get("confirm") is not True:
+                        raise ValueError("Exporting needs a confirmation")
+                    written = session.export(str(body.get("path") or ""))
+                    return self._json(HTTPStatus.OK, {"written": written, **session.state()})
+                if url.path == "/api/reveal":
+                    state = session.state()
+                    if state["exported"] and sys.platform == "darwin":
+                        subprocess.run(["open", "-R", state["exported"]], check=False)
+                    return self._json(HTTPStatus.OK, state)
                 if url.path == "/api/preview":
                     fix = body.get("fix", "")
                     tokens = body.get("options", "")
