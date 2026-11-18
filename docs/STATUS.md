@@ -613,8 +613,16 @@ On catalogue page 48 the Silver plate shows the white-overprint fault as it
 would print: the silver bars run solid where the white words should be
 knocked out.
 
-Next for the app: drag and drop, recent files, a Mac app wrapper, and tidying
-the screens.
+Recent files (added 2026-11-18): the app remembers the last 12 PDFs opened
+(paths only, in `~/.config/prepress-preflight/recent.json`, or the folder in
+`PREFLIGHT_CONFIG`). They show on the start screen and in a Recent menu, with
+moved or deleted files marked. Tests use a temporary settings folder so they
+never touch the real list.
+
+Next for the app: a native Mac window, which also brings drag and drop with
+real file paths (a plain browser hides a dropped file's location). It needs
+the PyWebView package as an optional extra; installing it awaits the owner's
+go-ahead. Then tidying the screens.
 
 ## Next tasks, in order
 

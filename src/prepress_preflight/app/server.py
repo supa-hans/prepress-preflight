@@ -45,6 +45,35 @@ from ..model import FAIL, UNCHECKED, WARN
 from ..plates import ink_coverage, page_inks, render_plate
 
 STATIC = Path(__file__).parent / "static"
+RECENT_MAX = 12
+
+
+def recent_file() -> Path:
+    """Where the list of recently opened files is kept: paths only, on this computer."""
+    base = os.environ.get("PREFLIGHT_CONFIG") or Path.home() / ".config" / "prepress-preflight"
+    return Path(base) / "recent.json"
+
+
+def load_recent() -> list[dict]:
+    try:
+        paths = json.loads(recent_file().read_text())
+    except (OSError, ValueError):
+        return []
+    return [{"path": p, "name": os.path.basename(p), "exists": os.path.isfile(p)}
+            for p in paths if isinstance(p, str)][:RECENT_MAX]
+
+
+def remember(path: str) -> None:
+    try:
+        old = json.loads(recent_file().read_text())
+    except (OSError, ValueError):
+        old = []
+    paths = [path] + [p for p in old if isinstance(p, str) and p != path]
+    try:
+        recent_file().parent.mkdir(parents=True, exist_ok=True)
+        recent_file().write_text(json.dumps(paths[:RECENT_MAX], indent=1))
+    except OSError:
+        pass  # a list that cannot be saved is not worth stopping for
 MAX_PIXELS = 16_000_000  # the largest page render the app will make
 pymupdf.TOOLS.set_icc(False)  # show the file's own CMYK values, as the checks do
 # PyMuPDF is not safe to use from several threads at once; renders take turns.
@@ -80,6 +109,7 @@ class Session:
         path = os.path.abspath(os.path.expanduser(path))
         if not path.lower().endswith(".pdf") or not os.path.isfile(path):
             raise ValueError("Choose a PDF file that exists")
+        remember(path)
         with self.lock:
             self.path, self.report, self.error, self.busy = path, None, None, True
             self._renders.clear()
@@ -110,7 +140,8 @@ class Session:
                     "queue": [{k: v for k, v in step.items() if k != "output"} for step in self.queue],
                     "queue_report": self.base_report if self.queue else None,
                     "queue_effect": effect(self.report, self.base_report) if self.queue and self.base_report else None,
-                    "exported": self.exported, "export_error": self.export_error}
+                    "exported": self.exported, "export_error": self.export_error,
+                    "recent": load_recent() if self.path is None else []}
 
     # ---- propose ----------------------------------------------------------
 
@@ -482,6 +513,8 @@ def make_handler(session: Session, key: str, port_ref: dict):
                     number = int((query.get("n") or ["1"])[0])
                     which = (query.get("which") or ["before"])[0]
                     return self._json(HTTPStatus.OK, {"inks": session.inks(number, which)})
+                if url.path == "/api/recent":
+                    return self._json(HTTPStatus.OK, {"recent": load_recent()})
                 if url.path == "/api/fixes":
                     return self._json(HTTPStatus.OK, {"fixes": sorted(FIXES)})
                 return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")

@@ -19,6 +19,7 @@
     <button class="mode" id="mode-export" role="tab" aria-selected="false">Export</button>
   </div>
   <div class="actions">
+    <select id="recent-menu" aria-label="Open a recent file"><option value="">Recent…</option></select>
     <button id="open">Open PDF</button>
   </div>
 </header>
@@ -52,6 +53,10 @@
           <button type="submit">Open</button>
         </form>
         <p id="path-error" class="error" hidden></p>
+        <div id="recent" class="recent" hidden>
+          <p class="muted small">Recent files</p>
+          <ul id="recent-list"></ul>
+        </div>
       </div>
       <div id="sheet" class="sheet" hidden>
         <img id="page-img" alt="">

@@ -312,3 +312,22 @@ def test_inks_and_plate_renders(app, make):
     assert kind == "image/png" and body[:4] == b"\x89PNG"
     with pytest.raises(urllib.error.HTTPError):
         get(base, "/api/page?n=1&w=300&plate=Nope")
+
+
+def test_recent_files_are_remembered_most_recent_first(app, make, tmp_path):
+    a, b = make(b"0 0 0 1 k 100 100 50 50 re f", name="a.pdf"), make(b"0 0 0 1 k 100 100 50 50 re f", name="b.pdf")
+    base = app()
+    for path in (a, b, a):
+        post(base, "/api/open", {"path": path})
+        wait_report(base)
+    recent = json.loads(get(base, "/api/recent")[2])["recent"]
+    assert [r["name"] for r in recent] == ["a.pdf", "b.pdf"]
+    assert all(r["exists"] for r in recent)
+    os.remove(b)
+    assert [r["exists"] for r in json.loads(get(base, "/api/recent")[2])["recent"]] == [True, False]
+
+
+def test_recent_files_stay_out_of_the_real_home_folder(app, make):
+    import pathlib
+    from prepress_preflight.app.server import recent_file
+    assert pathlib.Path.home() not in recent_file().parents

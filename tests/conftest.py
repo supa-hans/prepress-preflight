@@ -65,3 +65,9 @@ def make(tmp_path):
     def _make(content: bytes, name="t.pdf", media=MEDIA, trim=TRIM, bleed=BLEEDBOX, **kw):
         return build_pdf(tmp_path / name, content, media, trim, bleed, **kw)
     return _make
+
+
+@pytest.fixture(autouse=True)
+def private_settings(tmp_path_factory, monkeypatch):
+    """Keep the app's recent-files list (and any other settings) out of the real home folder."""
+    monkeypatch.setenv("PREFLIGHT_CONFIG", str(tmp_path_factory.mktemp("settings")))

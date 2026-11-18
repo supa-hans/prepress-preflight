@@ -61,8 +61,46 @@
     if (s.busy || s.preview_busy) setTimeout(poll, 500);
   }
 
+  function renderRecent(list) {
+    const ul = $("recent-list");
+    ul.textContent = "";
+    $("recent").hidden = !list.length;
+    for (const r of list) {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.disabled = !r.exists;
+      const name = document.createElement("span");
+      name.textContent = r.name + (r.exists ? "" : " (moved or deleted)");
+      if (!r.exists) name.className = "gone";
+      const where = document.createElement("span");
+      where.className = "where";
+      where.textContent = r.path;
+      b.append(name, where);
+      b.onclick = () => open({ path: r.path });
+      li.append(b);
+      ul.append(li);
+    }
+  }
+
+  async function loadRecentMenu() {
+    let list = [];
+    try { list = (await api("/api/recent")).recent; } catch (e) { list = []; }
+    const menu = $("recent-menu");
+    menu.textContent = "";
+    const first = document.createElement("option");
+    first.value = ""; first.textContent = "Recent…";
+    menu.append(first);
+    for (const r of list.filter((x) => x.exists)) {
+      const o = document.createElement("option");
+      o.value = r.path; o.textContent = r.name; o.title = r.path;
+      menu.append(o);
+    }
+    menu.hidden = list.length === 0;
+  }
+
   function show(s) {
     $("name").textContent = s.name || "No file open";
+    if (!s.path) renderRecent(s.recent || []);
     document.title = s.name ? `${s.name} · Preflight` : "Preflight";
     $("busy").hidden = !s.busy;
     if (s.error) {
@@ -557,6 +595,9 @@
   $("show-after").onclick = () => setWhich("after");
 
   $("open").onclick = () => open({ choose: true });
+  $("recent-menu").onchange = () => { const p = $("recent-menu").value; $("recent-menu").value = ""; if (p) open({ path: p }); };
+  $("recent-menu").onfocus = loadRecentMenu;
+  loadRecentMenu();
   $("path-form").onsubmit = (e) => { e.preventDefault(); open({ path: $("path").value.trim() }); };
   $("path").oninput = () => { $("path-error").hidden = true; };
   ["show-trim", "show-bleed", "show-media"].forEach((id) => { $(id).onchange = renderPage; });
