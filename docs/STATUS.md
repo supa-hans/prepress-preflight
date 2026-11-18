@@ -626,8 +626,8 @@ The window shows the same pages from the same local server. Its addition is
 drag and drop with real paths: PyWebView passes a dropped file's location to
 Python (`pywebviewFullPath`), so the PDF is opened where it is, with no copy.
 In a browser, a drop explains why it cannot open the file. Closing the window
-stops the server and removes the temporary previews. Not yet checked by the
-owner on screen; drag and drop is tested through `handle_drop` only.
+stops the server and removes the temporary previews. Checked by the owner on
+screen, including dragging a PDF onto the window (2026-11-18).
 
 Next for the app: tidying the screens, when the owner has notes.
 
