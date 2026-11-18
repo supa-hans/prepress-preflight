@@ -452,6 +452,8 @@ def suggest(report: dict) -> list[list[str]]:
             fixes.append("spot-to-cmyk")
         elif check == "Spot colours" and "spelt more than one way" in msg:
             fixes.append("rename-spot")
+        elif check == "Registration inside trim" and sev == FAIL:
+            fixes.append("registration-to-black")
         elif check == "White overprint":
             fixes.append("knock-out-white")
         elif check == "Page size" and sev == WARN and "does not match the expected" in msg:

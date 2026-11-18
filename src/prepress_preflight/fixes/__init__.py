@@ -8,6 +8,7 @@ from .base import Proposal
 from .add_bleed import propose_add_bleed, propose_add_marks, write_add_bleed
 from .knock_out_white import propose_knock_out_white, write_knock_out_white
 from .object_overprint import propose_object_overprint, write_object_overprint
+from .registration_to_black import propose_registration_to_black, write_registration_to_black
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .scale import propose_scale, write_scale
 from .spot_to_cmyk import propose_spot_to_cmyk, write_spot_to_cmyk
@@ -24,6 +25,7 @@ FIXES = {
     "spot-to-cmyk": (propose_spot_to_cmyk, write_spot_to_cmyk),
     "object-overprint": (propose_object_overprint, write_object_overprint),
     "knock-out-white": (propose_knock_out_white, write_knock_out_white),
+    "registration-to-black": (propose_registration_to_black, write_registration_to_black),
 }
 
 # Fixes aimed at one object of one file: they make no sense in a saved action list.

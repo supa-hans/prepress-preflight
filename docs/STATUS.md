@@ -774,7 +774,31 @@ changes. (Page 5 showed a 3-level jitter in one run; the original rendered
 against itself in the same way shows the same jitter, so it is MuPDF, not the
 edit.)
 
-Next for the object tree: other single-object edits (remove, recolour), when
+The bracketing is now shared (`fixes/bracket.py`) so other fixes that change
+some objects' state or colour use the same tested mechanism.
+
+## Registration to black (added 2026-11-19)
+
+`registration-to-black` is the fix for the Registration inside trim fail, and
+the app suggests it there. Each registration object inside the trim becomes
+black at the same tint (Registration 100% becomes K100, 50% becomes K50): my
+call, as the usual pre-press convention. Marks outside the trim stay
+registration. "Inside" is decided exactly as the check decides it, with the
+check's own trim, so a trim inferred from crop marks is used when there is one.
+
+Built on the shared bracketing; in a text block, black is set before each run
+and the registration colour, as written, put back after. Left alone and
+reported: one path that draws both marks outside the trim and artwork inside
+it; registration mixed with other inks in one DeviceN colour; pattern fills;
+a form also used outside the trim, or whose uses disagree on colour.
+Verified: every target is CMYK 0/0/0/tint afterwards, and every other object
+has its colour, place and overprint unchanged.
+
+No sample has registration inside the trim (all 14 pass that check), so this
+is tested on synthetic files only so far.
+
+Next candidates on the same mechanism: thicken hairlines to 0.25 pt (the
+Hairlines warn); then other single-object edits (remove, recolour), when
 wanted.
 
 ## Next tasks, in order

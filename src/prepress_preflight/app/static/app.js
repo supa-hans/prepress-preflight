@@ -27,6 +27,8 @@
       fields: [["spot", "Only these spots (one per line; leave empty for all)", "lines", ""]] },
     "rename-spot": { help: "Renames a spot colour, or merges it into one already in the file.",
       fields: [["spot", "OLD=NEW, one per line", "lines", "", "Pantone 185C=PANTONE 185 C"]] },
+    "registration-to-black": { help: "Makes registration colour inside the trim black at the same tint (registration prints on every plate). Marks outside the trim stay registration.",
+      fields: [] },
     "knock-out-white": { help: "Knocks out every white object set to overprint (white overprint does not print). Only those objects change.",
       fields: [] },
     "object-overprint": { help: "Sets overprint on or off for one object. Easiest from Inspect: click the page, choose the object, and use its button.",
