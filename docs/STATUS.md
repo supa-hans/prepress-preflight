@@ -425,6 +425,28 @@ document.py now builds the mapping from the crop box, and
 `tests/test_device_matrix.py` checks all 16 combinations of rotation, crop box
 and UserUnit.
 
+## Action lists (added 2026-11-18)
+
+Fixes join with `+` and run in order: `preflight fix trim-from-marks+add-marks
+banner.pdf --clip-to-bleed --write press.pdf`. Each step is proposed on the
+result of the step before and written, with its own verification, to a
+temporary file. The user sees every step's proposal and one before/after
+preflight for the whole chain, and confirms once. Only then is the result
+copied to the new file, after checking again that the original's bytes are
+intact at its start and that its structure is sound. A step with nothing to do
+is shown and passed over; a step that fails stops the chain with nothing
+written. Options apply to the steps they belong to.
+
+Examples on the samples (originals unchanged):
+
+- Banner, `trim-from-marks+add-marks --clip-to-bleed`: trim corrected, clipped
+  to 3 mm of bleed, old marks replaced. Only the Multiply fail remains. About
+  43 seconds for the 509 MB file.
+- Little Stars, `scale+add-bleed --trim 210x297 --clip-to-bleed --marks`:
+  scaled to A4, bled, clipped and marked in one go: FAIL -> WARN.
+
+Not yet: saving a chain under a name for reuse, and per-step options.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -438,8 +460,9 @@ and UserUnit.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: a fix for the banner's Multiply fault (parked by the owner); spot colour
-   tools; action lists; desktop interface; object tree and editing.
+6. Later phases: named, saved action lists; a fix for the banner's Multiply
+   fault (parked by the owner); spot colour tools; desktop interface; object
+   tree and editing.
 
 ## Interface model (for later)
 

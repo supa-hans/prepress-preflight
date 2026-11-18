@@ -37,7 +37,8 @@ Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 
 ## Fixes
 
-Fixes never change the file you give them. They show what they would change,
+Fixes never change the file you give them. Join several with `+` to run them
+in order on one preview and one confirmation. They show what they would change,
 and write a new file only when asked and confirmed.
 
 ```sh
@@ -48,6 +49,7 @@ preflight fix add-bleed canva.pdf --write canva-bleed.pdf           # make 3 mm 
 preflight fix add-bleed canva.pdf --clip-to-bleed --marks --write canva-press.pdf   # also clip to the bleed box and add trim marks
 preflight fix add-marks poster.pdf --write poster-marks.pdf          # trim marks only
 preflight fix scale flyer.pdf --trim 148x210 --write flyer-a5.pdf    # scale A4 artwork to A5
+preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press.pdf   # several fixes in one go
 ```
 
 | Fix | What it changes |
