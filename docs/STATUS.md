@@ -445,7 +445,24 @@ Examples on the samples (originals unchanged):
 - Little Stars, `scale+add-bleed --trim 210x297 --clip-to-bleed --marks`:
   scaled to A4, bled, clipped and marked in one go: FAIL -> WARN.
 
-Not yet: saving a chain under a name for reuse, and per-step options.
+### Saved action lists (added 2026-11-18)
+
+A chain can be saved under a name and run with `@name`:
+
+    preflight actions save banner-press "trim-from-marks" "add-marks --clip-to-bleed" \
+        --description "Pull-up banners: trim from the marks, clip, fresh marks"
+    preflight fix @banner-press job.pdf --write press.pdf
+
+A list is a plain text file, one step per line with that step's own options,
+in `~/.config/prepress-preflight/actions/` (or the folder in
+`PREFLIGHT_ACTIONS`), so it can be read, edited and shared. A list is checked
+when saved, so a misspelt fix or option is refused rather than found mid-job.
+Options typed on the command line are the job's defaults (`--trim`,
+`--min-bleed`, `--bound`). A step's own options in the list come after them
+and win. `preflight actions list | show | save | delete` manages them.
+
+No lists are installed by default. Which chains suit the shop's work is the
+owner's call.
 
 ## Next tasks, in order
 
@@ -460,8 +477,7 @@ Not yet: saving a chain under a name for reuse, and per-step options.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: named, saved action lists; a fix for the banner's Multiply
-   fault (parked by the owner); spot colour tools; desktop interface; object
+6. Later phases: a fix for the banner's Multiply fault (parked by the owner); spot colour tools; desktop interface; object
    tree and editing.
 
 ## Interface model (for later)

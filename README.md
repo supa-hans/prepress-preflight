@@ -50,6 +50,8 @@ preflight fix add-bleed canva.pdf --clip-to-bleed --marks --write canva-press.pd
 preflight fix add-marks poster.pdf --write poster-marks.pdf          # trim marks only
 preflight fix scale flyer.pdf --trim 148x210 --write flyer-a5.pdf    # scale A4 artwork to A5
 preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press.pdf   # several fixes in one go
+preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save a chain under a name
+preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
 ```
 
 | Fix | What it changes |

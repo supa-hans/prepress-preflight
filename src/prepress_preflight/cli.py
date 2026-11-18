@@ -20,6 +20,9 @@ def main(argv=None) -> int:
     if argv[:1] == ["fix"]:
         from .fix_cli import main as fix_main
         return fix_main(argv[1:])
+    if argv[:1] == ["actions"]:
+        from .actions import main as actions_main
+        return actions_main(argv[1:])
     parser = argparse.ArgumentParser(prog="preflight", description="Read-only preflight checks for print PDFs.")
     parser.add_argument("files", nargs="+", help="PDF file(s) to check")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")

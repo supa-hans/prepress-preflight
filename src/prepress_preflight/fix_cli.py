@@ -13,7 +13,8 @@ import sys
 import tempfile
 
 from .checks import Options
-from .cli_common import parse_trim
+from .actions import _step_parser, load
+from .cli_common import add_step_options
 from .engine import run
 from .fixes import FIXES
 from .fixes.chain import deliver, final_file, parse_chain, run_chain
@@ -84,42 +85,67 @@ def _page_count(path) -> int:
         return len(pdf.pages)
 
 
+def _settings(ns):
+    options = Options(min_bleed_mm=ns.min_bleed, expected_trim_mm=ns.trim, bound=ns.bound)
+    extra = dict(method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode)
+    return options, extra
+
+
+def _step_settings(listed, args, argv):
+    """(fix, Options, extra) for each step. Options typed on the command line are
+    the job's defaults; a saved list's own options for a step come after and win."""
+    # The job's options: everything typed except the fix name, the file, and
+    # the options about writing, which belong to the whole run.
+    job, skip_next, positionals = [], False, [args.name, args.file]
+    for token in argv:
+        if skip_next:
+            skip_next = False
+        elif token == "--write":
+            skip_next = True
+        elif token.startswith("--write="):
+            continue
+        elif token in ("--yes", "--no-preview"):
+            continue
+        elif token in positionals:
+            positionals.remove(token)
+        else:
+            job.append(token)
+    settings = []
+    for name, own in listed:
+        try:
+            ns = _step_parser().parse_args(job + own)
+        except (Exception, SystemExit) as exc:
+            raise ValueError(f"options for {name}: {exc}") from None
+        settings.append((name, *_settings(ns)))
+    return settings
+
+
 def main(argv) -> int:
     parser = argparse.ArgumentParser(prog="preflight fix",
                                      description="Propose a fix, or several joined with +, and write the result to a "
                                                  "new file only when asked.")
     parser.add_argument("name", help="which fix: " + ", ".join(sorted(FIXES)) +
-                                     "; join several with + to run them in order, e.g. trim-from-marks+add-bleed")
+                                     "; join several with + to run them in order, e.g. trim-from-marks+add-bleed; "
+                                     "or @name for a saved action list (see: preflight actions)")
     parser.add_argument("file", help="the PDF to fix; it is never modified")
     parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
-    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes, scale: the job's trim size in mm, e.g. 845x2100")
-    shape = parser.add_mutually_exclusive_group()
-    shape.add_argument("--fill", action="store_const", const="fill", dest="mode",
-                       help="scale: when the shape differs by more than 1%%, scale to cover the trim and crop the overflow")
-    shape.add_argument("--fit", action="store_const", const="fit", dest="mode",
-                       help="scale: when the shape differs by more than 1%%, scale to fit inside the trim")
-    parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="bleed to give the new bleed box (default 3)")
-    parser.add_argument("--method", choices=("mirror", "stretch"), default="mirror",
-                        help="add-bleed: reflect the edge outward (default), or repeat its last row of pixels")
-    parser.add_argument("--bound", action="store_true", help="bound job: spine edges need no bleed")
-    parser.add_argument("--clip-to-bleed", action="store_true",
-                        help="add-bleed, add-marks: clip everything on the page to the bleed box")
-    parser.add_argument("--marks", action="store_true",
-                        help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")
+    add_step_options(parser)
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
     args = parser.parse_args(argv)
 
     try:
-        names = parse_chain(args.name, FIXES)
+        if args.name.startswith("@"):
+            listed = load(args.name[1:])
+        else:
+            listed = [(name, []) for name in parse_chain(args.name, FIXES)]
+        steps_in = _step_settings(listed, args, argv)
     except ValueError as exc:
         print(f"preflight fix: {exc}", file=sys.stderr)
         return 2
     if args.write and os.path.exists(args.write):
         print(f"preflight fix: {args.write} already exists; choose a new file name", file=sys.stderr)
         return 2
-    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim, bound=args.bound)
-    extra = dict(method=args.method, clip=args.clip_to_bleed, marks=args.marks, mode=args.mode)
     try:
         total = _page_count(args.file)
     except Exception as exc:
@@ -128,7 +154,7 @@ def main(argv) -> int:
     workdir = tempfile.mkdtemp(prefix="preflight-fix-")
     try:
         try:
-            steps = run_chain(args.file, names, FIXES, options, workdir, **extra)
+            steps = run_chain(args.file, steps_in, FIXES, workdir)
         except Exception as exc:
             print(f"preflight fix: {exc}; nothing was written", file=sys.stderr)
             return 2
@@ -141,6 +167,7 @@ def main(argv) -> int:
             return 0
         if not args.no_preview:
             try:
+                options = steps_in[0][1]
                 _print_effect(run(args.file, options), run(final, options))
             except Exception as exc:
                 print(f"\npreflight fix: the preview failed ({exc}); nothing was written", file=sys.stderr)

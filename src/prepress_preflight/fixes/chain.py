@@ -31,10 +31,13 @@ def parse_chain(text: str, known) -> list[str]:
     return names
 
 
-def run_chain(path: str, names: list[str], fixes, options, workdir: str, **extra) -> list[Step]:
-    """Propose and write each step into `workdir`. Raises on the first failure."""
+def run_chain(path: str, settings, fixes, workdir: str) -> list[Step]:
+    """Propose and write each step into `workdir`. Raises on the first failure.
+
+    settings: [(fix name, Options, extra keyword options)] in order.
+    """
     steps, current = [], path
-    for i, name in enumerate(names, 1):
+    for i, (name, options, extra) in enumerate(settings, 1):
         propose, write = fixes[name]
         proposal = propose(current, options, **extra)
         output = None
