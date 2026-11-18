@@ -15,6 +15,7 @@ from .hairlines import HairlineCheck
 from .fonts import FontEmbeddingCheck
 from .trim_marks import TrimMarkCheck
 from .dielines import DielineCheck
+from .spots import SpotColourCheck
 from .annotations import AnnotationCheck
 from .layers import LayerCheck
 from .security import SecurityCheck
@@ -36,6 +37,7 @@ ALL_CHECKS = [
     FontEmbeddingCheck,
     TrimMarkCheck,
     DielineCheck,
+    SpotColourCheck,
     AnnotationCheck,
     LayerCheck,
     SecurityCheck,

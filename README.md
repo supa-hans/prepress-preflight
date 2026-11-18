@@ -29,6 +29,7 @@ preflight artwork.pdf --trim 90x55    # also compare trim size with the job spec
 preflight booklet.pdf --bound         # bound job: spine edges need no bleed
 preflight artwork.pdf --ink-limit 300 # total ink limit in percent (default 400)
 preflight artwork.pdf --safe-margin 3 # keep text and loose artwork 3 mm inside the trim (default 1.5)
+preflight artwork.pdf --cmyk-only     # the job prints in CMYK only: any printing spot fails
 preflight artwork.pdf --json          # same findings as data
 preflight *.pdf                       # several files
 ```
@@ -52,6 +53,7 @@ preflight fix scale flyer.pdf --trim 148x210 --write flyer-a5.pdf    # scale A4 
 preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press.pdf   # several fixes in one go
 preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save a chain under a name
 preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
+preflight fix rename-spot job.pdf --spot "Pantone 185C=PANTONE 185 C" --write job-spots.pdf
 ```
 
 | Fix | What it changes |
@@ -60,6 +62,7 @@ preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run 
 | add-bleed | Makes bleed where artwork stops at the trim: the edge is mirrored outward (`--method stretch` repeats it instead) as an image beneath the artwork, outside the trim, and the page grows to hold it. `--clip-to-bleed` clips everything to the bleed box; `--marks` adds trim marks outside it, replacing any existing ones. The artwork inside the trim is proved unchanged. |
 | add-marks | Adds trim marks outside the bleed box, without making bleed. Keeps existing marks that already point at the trim, unless `--clip-to-bleed` is also asked for. |
 | scale | Scales the whole page so the trim is the job size (`--trim WxH`). Up to 1% change of shape is made exactly; beyond that it needs `--fill` (crop to cover) or `--fit` (fit inside). Crop marks are redrawn when the shape changes. |
+| rename-spot | Renames a spot colour, or merges it into one already in the file (`--spot "OLD=NEW"`). Only the colour definitions change. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
 The new file is the original, byte for byte, with the changes appended (a PDF
@@ -87,6 +90,7 @@ before.
 | Font embedding | fail | A font used for visible text is not embedded. |
 | Trim marks | warn / note | When the crop marks point at a different rectangle from the trim box, the trim is taken from the marks for every other check and the report says it was inferred. Notes when marks and box agree. |
 | Dielines | warn / note | Warns when a dieline is not set to overprint. Reports each dieline's size. |
+| Spot colours | note / warn / fail | Lists the printing spots in use. Warns on one ink spelt two ways or defined two ways. Fails any printing spot when `--cmyk-only` is given. |
 | Annotations | warn / note | Warns on annotations set to print and on form fields. Notes comments that will not print. |
 | Layers | warn / note | Warns when a layer is switched off. Lists visible layers. |
 | Security | warn | The file is encrypted or restricted. |

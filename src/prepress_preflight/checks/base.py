@@ -25,6 +25,7 @@ class Options:
     # trimmed, so it needs no bleed. Page 1 is taken as a right-hand page.
     bound: bool = False
     safe_margin_mm: float = 1.5
+    cmyk_only: bool = False  # the job prints in process colours only
 
 
 class Check:

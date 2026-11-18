@@ -32,13 +32,15 @@ def main(argv=None) -> int:
                         help="keep text and loose artwork this far inside the trim (default 1.5)")
     parser.add_argument("--ink-limit", type=float, default=400.0, metavar="PCT",
                         help="total ink limit in percent (default 400, a placeholder until the press limit is known)")
+    parser.add_argument("--cmyk-only", action="store_true",
+                        help="the job prints in process colours only: any printing spot colour is a fail")
     parser.add_argument("--bound", action="store_true",
                         help="bound job: spine edges need no bleed (page 1 is a right-hand page)")
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
     options = Options(expected_trim_mm=args.trim, min_bleed_mm=args.min_bleed, bound=args.bound,
-                      ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin)
+                      ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin, cmyk_only=args.cmyk_only)
     results, errors = [], 0
     for path in args.files:
         try:

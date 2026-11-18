@@ -23,6 +23,9 @@
 | Font embedding | fail | A font used for visible text is not embedded |
 | Trim marks | warn | Crop marks point at a rectangle that differs from the trim box by more than 0.5 mm. The trim is then taken from the marks for every other check, and the report says so. A note when they agree |
 | Dielines | warn | A dieline (by spot name) is not set to overprint. Its size is reported as a note |
+| Spot colours | note | Every printing spot in use, with what uses it. Non-printing spots listed separately |
+| Spot colours | warn | One ink spelt more than one way ("PANTONE 185 C" / "Pantone 185C"), or one name defined two ways |
+| Spot colours | fail | Any printing spot, when the job is CMYK only (`--cmyk-only`) |
 | Annotations | warn | Annotations set to print (stamps, comments), or any form field. Links are ignored |
 | Annotations | note | Comments not set to print |
 | Layers | warn | Any layer switched off. Visible layers are listed as a note |
@@ -463,6 +466,27 @@ and win. `preflight actions list | show | save | delete` manages them.
 
 No lists are installed by default. Which chains suit the shop's work is the
 owner's call.
+
+## Spot colours (added 2026-11-18)
+
+The Spot colours check lists every printing spot in use and what uses it,
+because each prints on a plate of its own unless the RIP converts it. On the
+samples: the catalogue has six spots in use on 13 pages (PANTONE 165, 283, 285
+and 286 C, plus "Deep Blue" and "Silver") in what looks like a CMYK job. The
+Uber Bag label has two Pantones, which look deliberate. The dieline, Skodix and
+the banner's template layer are listed as non-printing. With `--cmyk-only`,
+any printing spot is a fail.
+
+`preflight fix rename-spot --spot "OLD=NEW"` (repeatable) renames a spot, or
+merges it into an ink already in the file, taking that ink's definition. Only
+the colour definitions change; content streams are not touched, because the
+artwork refers to colours by a resource label. Verified: old names gone, new
+names used everywhere the old were, and a plain rename renders identically.
+On the catalogue: "Silver" -> "PANTONE 877 C", and "PANTONE 286 C" merged into
+"PANTONE 285 C", gives 5 spots instead of 6.
+
+Next: converting spots to CMYK. This rewrites the colour instructions in the
+artwork, so it is to be proposed before it is built.
 
 ## Next tasks, in order
 

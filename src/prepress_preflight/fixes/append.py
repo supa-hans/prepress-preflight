@@ -165,6 +165,19 @@ def _same_prefix(src, dst, length) -> bool:
     return True
 
 
+def _same_object(written, intended) -> bool:
+    """Whether a written object is the one intended. A stream is compared by its
+    dictionary (less /Length, which is only filled in when written) and its raw data."""
+    if isinstance(intended, pikepdf.Stream):
+        if not isinstance(written, pikepdf.Stream):
+            return False
+        def head(stream):
+            d = stream.stream_dict
+            return pikepdf.Dictionary({k: d[k] for k in d.keys() if k != "/Length"}).unparse(resolved=True)
+        return head(written) == head(intended) and written.read_raw_bytes() == intended.read_raw_bytes()
+    return written.unparse(resolved=True) == intended.unparse(resolved=True)
+
+
 def verify_append(src, dst, original_size, changes, additions=None) -> None:
     """Prove the new file is the original plus exactly the intended changes. Raises if not."""
     if not _same_prefix(src, dst, original_size):
@@ -184,7 +197,7 @@ def verify_append(src, dst, original_size, changes, additions=None) -> None:
             og = obj.objgen
             new = after.get_object(og)
             if og in changes:
-                if new.unparse(resolved=True) != changes[og].unparse(resolved=True):
+                if not _same_object(new, changes[og]):
                     raise AppendError(f"verification failed: object {og[0]} does not hold the intended change")
             elif new.unparse(resolved=True) != obj.unparse(resolved=True):
                 raise AppendError(f"verification failed: object {og[0]} changed although it was not meant to")

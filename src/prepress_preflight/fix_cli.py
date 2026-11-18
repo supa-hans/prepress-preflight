@@ -22,11 +22,17 @@ from .model import FAIL, UNCHECKED, WARN
 from .report import page_list
 
 
+# Notes that a fix can be meant to change, so the preview shows them too.
+NOTES_SHOWN = {"Spot colours", "Trim marks", "Page size"}
+
+
 def _summary(result) -> set:
-    return {(f.check, f.severity, f.message) for f in result.findings if f.severity in (FAIL, WARN, UNCHECKED)}
+    return {(f.check, f.severity, f.message) for f in result.findings
+            if f.severity in (FAIL, WARN, UNCHECKED) or f.check in NOTES_SHOWN}
 
 
 HEADERS = {
+    "rename-spot": "Proposed changes (only the spot colour definitions change; the artwork is not touched):",
     "scale": "Proposed changes (the artwork is scaled as a whole, not edited; page boxes and link positions scale with it):",
     "add-bleed": "Proposed changes (the original artwork inside the trim is not changed; bleed is added beneath it, "
                  "outside the trim, and any clip or trim marks asked for):",
@@ -87,7 +93,7 @@ def _page_count(path) -> int:
 
 def _settings(ns):
     options = Options(min_bleed_mm=ns.min_bleed, expected_trim_mm=ns.trim, bound=ns.bound)
-    extra = dict(method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode)
+    extra = dict(method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode, spots=ns.spot)
     return options, extra
 
 

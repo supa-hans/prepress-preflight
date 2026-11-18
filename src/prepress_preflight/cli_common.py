@@ -26,5 +26,7 @@ def add_step_options(parser) -> None:
     parser.add_argument("--bound", action="store_true", help="bound job: spine edges need no bleed")
     parser.add_argument("--clip-to-bleed", action="store_true",
                         help="add-bleed, add-marks: clip everything on the page to the bleed box")
+    parser.add_argument("--spot", action="append", metavar="OLD=NEW",
+                        help="rename-spot: rename a spot colour, or merge it into one already in the file (repeatable)")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")
