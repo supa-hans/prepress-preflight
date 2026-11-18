@@ -619,10 +619,17 @@ Recent files (added 2026-11-18): the app remembers the last 12 PDFs opened
 moved or deleted files marked. Tests use a temporary settings folder so they
 never touch the real list.
 
-Next for the app: a native Mac window, which also brings drag and drop with
-real file paths (a plain browser hides a dropped file's location). It needs
-the PyWebView package as an optional extra; installing it awaits the owner's
-go-ahead. Then tidying the screens.
+Native window (added 2026-11-18, PyWebView installed with the owner's
+go-ahead): `preflight app` now opens its own window when PyWebView is present
+(`pip install -e ".[app]"`), and `--browser` gives the browser tab as before.
+The window shows the same pages from the same local server. Its addition is
+drag and drop with real paths: PyWebView passes a dropped file's location to
+Python (`pywebviewFullPath`), so the PDF is opened where it is, with no copy.
+In a browser, a drop explains why it cannot open the file. Closing the window
+stops the server and removes the temporary previews. Not yet checked by the
+owner on screen; drag and drop is tested through `handle_drop` only.
+
+Next for the app: tidying the screens, when the owner has notes.
 
 ## Next tasks, in order
 

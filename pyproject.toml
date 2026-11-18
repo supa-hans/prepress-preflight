@@ -11,6 +11,8 @@ dependencies = ["pikepdf>=8", "pymupdf>=1.24", "numpy>=1.24"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# The app's native window (drag and drop with real file paths). Optional.
+app = ["pywebview>=5"]
 
 [project.scripts]
 preflight = "prepress_preflight.cli:main"

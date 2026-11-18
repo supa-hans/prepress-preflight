@@ -331,3 +331,20 @@ def test_recent_files_stay_out_of_the_real_home_folder(app, make):
     import pathlib
     from prepress_preflight.app.server import recent_file
     assert pathlib.Path.home() not in recent_file().parents
+
+
+def test_a_dropped_pdf_is_opened_where_it_is(make):
+    from prepress_preflight.app.server import Session
+    from prepress_preflight.app.window import handle_drop
+    from prepress_preflight.checks import Options
+    session = Session(Options())
+    path = make(b"0 0 0 1 k 100 100 50 50 re f")
+    try:
+        assert handle_drop({"dataTransfer": {"files": [{"name": "t.pdf", "pywebviewFullPath": path}]}}, session) is None
+        assert session.state()["path"] == path
+        assert handle_drop({"dataTransfer": {"files": [{"name": "a.jpg", "pywebviewFullPath": "/x/a.jpg"}]}}, session)
+        assert handle_drop({"dataTransfer": {"files": []}}, session)
+        missing = {"dataTransfer": {"files": [{"name": "gone.pdf", "pywebviewFullPath": "/nowhere/gone.pdf"}]}}
+        assert "exists" in handle_drop(missing, session)
+    finally:
+        session.close()

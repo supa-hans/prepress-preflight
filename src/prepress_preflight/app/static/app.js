@@ -594,6 +594,29 @@
   $("show-before").onclick = () => setWhich("before");
   $("show-after").onclick = () => setWhich("after");
 
+  // ---- drag and drop ------------------------------------------------------
+  // In the native window, PyWebView hands a dropped file's real path to Python,
+  // which opens it and calls preflightRefresh. A browser hides the path, so
+  // there a drop only explains how to open the file instead.
+  let noticeTimer = null;
+  window.preflightNotice = (text) => {
+    const n = $("notice");
+    n.textContent = text;
+    n.hidden = false;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => { n.hidden = true; }, 5000);
+  };
+  window.preflightRefresh = () => { state.path = null; poll(); };
+  const native = () => typeof window.pywebview !== "undefined";
+  document.addEventListener("dragover", (e) => { e.preventDefault(); $("canvas").classList.add("drop"); });
+  document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("canvas").classList.remove("drop"); });
+  document.addEventListener("drop", (e) => {
+    $("canvas").classList.remove("drop");
+    if (native()) return;
+    e.preventDefault();
+    window.preflightNotice("A browser does not tell the app where a dropped file is. Use Open PDF, or run the app in its own window (preflight app).");
+  });
+
   $("open").onclick = () => open({ choose: true });
   $("recent-menu").onchange = () => { const p = $("recent-menu").value; $("recent-menu").value = ""; if (p) open({ path: p }); };
   $("recent-menu").onfocus = loadRecentMenu;

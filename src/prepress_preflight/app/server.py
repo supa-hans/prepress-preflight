@@ -597,13 +597,21 @@ def main(argv) -> int:
     parser.add_argument("file", nargs="?", help="a PDF to open straight away")
     parser.add_argument("--port", type=int, default=0, help="port to use (default: any free one)")
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    parser.add_argument("--browser", action="store_true",
+                        help="use the web browser even if the native window is available")
     parser.add_argument("--key", help=argparse.SUPPRESS)  # fixed key, for development only
     args = parser.parse_args(argv)
+    from .window import available, run_window
+    native = available() and not args.browser and not args.no_browser
     try:
-        server, url, session = serve(args.file, args.port, not args.no_browser, key=args.key)
+        server, url, session = serve(args.file, args.port, not (args.no_browser or native), key=args.key)
     except ValueError as exc:
         print(f"preflight app: {exc}", file=sys.stderr)
         return 2
+    if native:
+        print("Preflight is open in its own window. Close the window to stop it.")
+        run_window(server, url, session)
+        return 0
     print(f"Preflight is open at {url}")
     print("It runs on this computer only. Press Ctrl+C to stop it.")
     try:

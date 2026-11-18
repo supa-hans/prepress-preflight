@@ -39,8 +39,10 @@ Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 ## The app
 
 ```sh
-preflight app                 # opens in your browser
+pip install -e ".[app]"       # optional: the app's own window, with drag and drop
+preflight app                 # opens the app (its own window, or your browser without the extra)
 preflight app artwork.pdf     # with a file open
+preflight app --browser       # use the browser even when the window is available
 ```
 
 Inspect a file (pages, the findings marked on them, trim and bleed, each
