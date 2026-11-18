@@ -27,6 +27,10 @@
       fields: [["spot", "Only these spots (one per line; leave empty for all)", "lines", ""]] },
     "rename-spot": { help: "Renames a spot colour, or merges it into one already in the file.",
       fields: [["spot", "OLD=NEW, one per line", "lines", "", "Pantone 185C=PANTONE 185 C"]] },
+    "object-overprint": { help: "Sets overprint on or off for one object. Easiest from Inspect: click the page, choose the object, and use its button.",
+      fields: [["object", "Object (page:number)", "text", "", "48:2439"],
+               ["overprint", "Overprint", "select", "off", ["off", "on"], ["Off (knock out)", "On"]],
+               ["expect", "Must still be (filled in for you)", "text", ""]] },
   };
 
   async function api(path, opts = {}) {
@@ -454,6 +458,40 @@
       ["Soft mask", yes(s.soft_mask)], ["ExtGState", s.extgstates.join(", ") || "none"],
     ]));
     box.append(section(`Source: ${d.source.stream}, instruction ${d.source.instruction}`, null, d.source.excerpt.join("\n")));
+    box.append(editButtons(d));
+  }
+
+  // Edits are proposed on the file the next fix starts from: the original, or the
+  // result of the fixes kept in Review. Object numbers only hold for that file.
+  function editableView() {
+    const v = view()[0];
+    return state.queue.length ? v === "base" : v === "before";
+  }
+
+  function editButtons(d) {
+    const box = document.createElement("div");
+    box.className = "row";
+    if (!d.editable) {
+      box.append(Object.assign(document.createElement("span"), { className: "muted small", textContent: "Inside a pattern cell: it cannot be edited on its own." }));
+      return box;
+    }
+    if (!editableView()) {
+      box.append(Object.assign(document.createElement("span"), { className: "muted small",
+        textContent: "Edits apply to the result of the fixes kept in Review. Show it (Propose, Before) and choose the object again." }));
+      return box;
+    }
+    const b = document.createElement("button");
+    b.textContent = d.overprint_now ? "Knock out (overprint off)…" : "Set to overprint…";
+    b.onclick = () => {
+      chooseFix("object-overprint");
+      const field = (name) => $("fix-fields").querySelector(`[data-name="${name}"]`);
+      field("object").value = `${state.page}:${d.id}`;
+      field("overprint").value = d.overprint_now ? "off" : "on";
+      field("expect").value = d.fingerprint;
+      preview();
+    };
+    box.append(b);
+    return box;
   }
 
   function closeObjects() {

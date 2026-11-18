@@ -389,3 +389,24 @@ def test_object_position_uses_the_trim_from_crop_marks(app, make):
     # 10 mm in from the trim's left; 60 - 20 = 40 mm down from its top
     assert place["from_trim_left_mm"] == pytest.approx(10, abs=0.05)
     assert place["from_trim_top_mm"] == pytest.approx(40, abs=0.05)
+
+
+def test_knock_out_an_object_chosen_in_the_inspector(app, make, tmp_path):
+    import pikepdf
+    from prepress_preflight.content import walk_page
+    gs = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
+    base = app(make(b"0 0 0 1 k 100 100 100 100 re f /GS0 gs 0 0 0 0 k 120 120 20 20 re f", extgstate=gs))
+    wait_report(base)
+    height = MEDIA[3] - MEDIA[1]
+    hit = json.loads(get(base, f"/api/objects?n=1&x=130&y={height - 130}")[2])["objects"][0]
+    d = json.loads(get(base, f"/api/object?n=1&id={hit['id']}")[2])["object"]
+    assert d["colour"] == "C0 M0 Y0 K0" and d["overprint_now"] and d["editable"]
+    post(base, "/api/preview", {"fix": "object-overprint",
+                                "options": ["--object", f"1:{d['id']}", "--overprint", "off", "--expect", d["fingerprint"]]})
+    preview = wait_preview(base)["preview"]
+    assert preview["error"] is None and "knock out" in preview["reasons"][0]["text"]
+    post(base, "/api/keep", {})
+    dst = tmp_path / "out.pdf"
+    post(base, "/api/export", {"path": str(dst), "confirm": True})
+    with pikepdf.open(dst) as pdf:
+        assert [e.overprint for e in walk_page(pdf.pages[0]).events] == [False, False]

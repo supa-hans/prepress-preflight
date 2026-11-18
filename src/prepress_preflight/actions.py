@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 from .cli_common import add_step_options
-from .fixes import FIXES
+from .fixes import FIXES, ONE_FILE_ONLY
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -52,6 +52,9 @@ def parse_steps(text: str, source: str = "the list") -> list[tuple[str, list[str
         name, options = tokens[0], tokens[1:]
         if name not in FIXES:
             raise ValueError(f"{source}, line {number}: unknown fix '{name}'; choose from " + ", ".join(sorted(FIXES)))
+        if name in ONE_FILE_ONLY:
+            raise ValueError(f"{source}, line {number}: {name} changes one object of one file, so it cannot be "
+                             "part of a saved list")
         try:
             _, unknown = _step_parser().parse_known_args(options)
         except (argparse.ArgumentError, SystemExit) as exc:

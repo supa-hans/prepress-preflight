@@ -51,6 +51,13 @@ def describe_colour(cs, colour) -> tuple[str, float | None]:
     return cs.kind.upper() if cs.kind != "unknown" else "Unknown colour space", None
 
 
+def fingerprint(e) -> str:
+    """A short text that identifies a painted object: kind, colour and place.
+    Used to make sure an edit lands on the object the user chose."""
+    box = ",".join(f"{v:.1f}" for v in e.bbox) if e.bbox is not None else "-"
+    return f"{e.kind}/{e.paint}/{describe_colour(e.cs, e.colour)[0]}/{box}"
+
+
 def describe(e, to_view) -> dict:
     """One painted object, as plain data."""
     colour, ink = describe_colour(e.cs, e.colour)
@@ -260,6 +267,9 @@ def object_details(pdf_page, mu_page, number: int, trim=None) -> dict:
     to_view = device_matrix(mu_page)
     out = describe(e, to_view)
     out["id"] = number
+    out["fingerprint"] = fingerprint(e)
+    out["overprint_now"] = st.op_fill if e.paint == "fill" else st.op_stroke
+    out["editable"] = e.loc is not None
     try:
         ins = pikepdf.parse_content_stream(snap.stream)[snap.index]
         op, operands = str(ins.operator), ins.operands

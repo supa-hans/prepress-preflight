@@ -6,6 +6,7 @@ it, and the write is verified before the new file is put in place.
 """
 from .base import Proposal
 from .add_bleed import propose_add_bleed, propose_add_marks, write_add_bleed
+from .object_overprint import propose_object_overprint, write_object_overprint
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .scale import propose_scale, write_scale
 from .spot_to_cmyk import propose_spot_to_cmyk, write_spot_to_cmyk
@@ -20,6 +21,10 @@ FIXES = {
     "scale": (propose_scale, write_scale),
     "rename-spot": (propose_rename_spot, write_rename_spot),
     "spot-to-cmyk": (propose_spot_to_cmyk, write_spot_to_cmyk),
+    "object-overprint": (propose_object_overprint, write_object_overprint),
 }
 
-__all__ = ["FIXES", "Proposal"]
+# Fixes aimed at one object of one file: they make no sense in a saved action list.
+ONE_FILE_ONLY = {"object-overprint"}
+
+__all__ = ["FIXES", "ONE_FILE_ONLY", "Proposal"]

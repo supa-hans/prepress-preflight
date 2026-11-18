@@ -72,6 +72,7 @@ preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save 
 preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
 preflight fix rename-spot job.pdf --spot "Pantone 185C=PANTONE 185 C" --write job-spots.pdf
 preflight fix spot-to-cmyk catalogue.pdf --write catalogue-cmyk.pdf  # spots to CMYK
+preflight fix object-overprint catalogue.pdf --object 48:1240 --overprint off --write fixed.pdf  # one object
 ```
 
 | Fix | What it changes |
@@ -82,6 +83,7 @@ preflight fix spot-to-cmyk catalogue.pdf --write catalogue-cmyk.pdf  # spots to 
 | scale | Scales the whole page so the trim is the job size (`--trim WxH`). Up to 1% change of shape is made exactly; beyond that it needs `--fill` (crop to cover) or `--fit` (fit inside). Crop marks are redrawn when the shape changes. |
 | rename-spot | Renames a spot colour, or merges it into one already in the file (`--spot "OLD=NEW"`). Only the colour definitions change. |
 | spot-to-cmyk | Converts spot colours to CMYK using each spot's own CMYK definition (`--spot NAME` for particular ones). A spot is converted only if every use of it can be; the result is verified to look the same. |
+| object-overprint | Sets overprint on or off for one object (`--object PAGE:NUMBER`, numbered as the app's inspector shows them; `--overprint on/off`). Easiest from the app: click the page, choose the object, and use its button. Only that object changes, verified against every other object on the page. Refused for an object inside a form painted more than once, and not allowed in saved action lists. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
 The new file is the original, byte for byte, with the changes appended (a PDF

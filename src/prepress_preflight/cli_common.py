@@ -29,5 +29,9 @@ def add_step_options(parser) -> None:
     parser.add_argument("--spot", action="append", metavar="SPOT",
                         help="rename-spot: OLD=NEW, rename a spot or merge it into one already in the file; "
                              "spot-to-cmyk: the spot to convert (default: all). Repeatable")
+    parser.add_argument("--object", dest="target", metavar="PAGE:NUMBER",
+                        help="object-overprint: the object, as the app's inspector numbers it, e.g. 48:2439")
+    parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
+    parser.add_argument("--expect", metavar="TEXT", help="object-overprint: refuse unless the object is still this one")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")

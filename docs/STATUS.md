@@ -706,8 +706,44 @@ The walker gets this from a "detail" mode: it walks the page exactly as for the
 checks, and keeps a snapshot of the full state when it paints the chosen
 object, so the details and the checks cannot disagree about which object it is.
 
-Next for the object tree, when wanted: the first edits, which will follow the
-propose, review and export rules.
+## First object edit: overprint on or off (added 2026-11-18)
+
+`object-overprint` sets overprint for one object, chosen in the inspector: the
+object details have a "Knock out (overprint off)…" or "Set to overprint…"
+button, which opens Propose with the fix filled in and previews it. From
+there it is like any other fix: keep it in Review, export to a new file.
+
+Chosen as the first edit because it fixes the catalogue's page 48 fault one
+object at a time, and is the narrowest useful change. (Blend to Normal, the
+banner's fix, stays parked as the owner asked.)
+
+How it changes only that object: overprint is part of the graphics state,
+which later objects inherit. So the fix adds two new ExtGStates and sets one
+just before the object is painted (before the path is built, for a path,
+since the state may not change mid-path; it may change inside a text block)
+and the other just after, putting back exactly the overprint, both sides, and
+overprint mode that were in force. Every other object on the page is then
+verified unchanged, and the chosen one verified changed.
+
+Refused, rather than changing more than asked:
+  * an object inside a form painted more than once (every copy would change);
+  * an object inside a pattern cell;
+  * an object whose kind, colour and place no longer match what was chosen
+    (`--expect`, filled in by the app): object numbers hold only for the file
+    they came from. For the same reason, edits are offered only on the file the
+    next fix starts from (the original, or the result of the fixes kept in
+    Review), and object edits are not allowed in saved action lists.
+
+On catalogue page 48 (checked 2026-11-18): white text "GREY" (object 1240)
+overprints a Silver 100% box. After the edit the Silver plate under it has
+the letter shapes knocked out (391 of 930 pixels in its box lose the silver,
+none did before) and the White overprint finding goes from 14 to 13 text
+objects. 14 of the page's 26 white overprinting objects are on the page; the
+rest lie outside the media box, which the check rightly ignores.
+
+Possible next: an "all white overprint" fix (knock out every white object set
+to overprint, page by page) for the catalogue case, built on the same
+mechanism; then other single-object edits (remove, recolour).
 
 ## Next tasks, in order
 
