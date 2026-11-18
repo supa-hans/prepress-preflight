@@ -4,7 +4,29 @@
   const $ = (id) => document.getElementById(id);
   const ORDER = { fail: 0, unchecked: 1, warn: 2, note: 3 };
   const LABEL = { fail: "Fail", unchecked: "Could not check", warn: "Warn", note: "Note" };
-  const state = { report: null, page: 1, zoom: null, selected: null, path: null };
+  const state = { report: null, page: 1, zoom: null, selected: null, path: null, mode: "inspect", which: "before",
+                  preview: null, previewBusy: false };
+
+  // What each fix asks for. Field values become the same options the command line takes.
+  const FIXES = {
+    "trim-from-marks": { help: "Sets the trim box to where the crop marks point, and the bleed box to that plus the bleed.",
+      fields: [["min-bleed", "Bleed (mm)", "number", "3"]] },
+    "add-bleed": { help: "Makes bleed where artwork stops at the trim, beneath the artwork and outside the trim.",
+      fields: [["method", "Method", "select", "mirror", ["mirror", "stretch"]], ["min-bleed", "Bleed (mm)", "number", "3"],
+               ["clip-to-bleed", "Clip everything to the bleed box", "check"], ["marks", "Add trim marks", "check"],
+               ["bound", "Bound job: no bleed at the spine", "check"]] },
+    "add-marks": { help: "Adds trim marks outside the bleed box, without making bleed.",
+      fields: [["clip-to-bleed", "Clip everything to the bleed box", "check"]] },
+    "set-boxes": { help: "Sets the trim box to the job size and makes sure the bleed box gives the bleed.",
+      fields: [["trim", "Job size (W x H mm)", "text", "", "210x297"], ["min-bleed", "Bleed (mm)", "number", "3"]] },
+    "scale": { help: "Scales the whole page so the trim is the job size.",
+      fields: [["trim", "Job size (W x H mm)", "text", "", "148x210"],
+               ["shape", "If the shape differs by more than 1%", "select", "", ["", "fill", "fit"], ["Refuse", "Fill (crop to cover)", "Fit (fit inside)"]]] },
+    "spot-to-cmyk": { help: "Converts spot colours to CMYK using their own CMYK definition.",
+      fields: [["spot", "Only these spots (one per line; leave empty for all)", "lines", ""]] },
+    "rename-spot": { help: "Renames a spot colour, or merges it into one already in the file.",
+      fields: [["spot", "OLD=NEW, one per line", "lines", "", "Pantone 185C=PANTONE 185 C"]] },
+  };
 
   async function api(path, opts = {}) {
     const sep = path.includes("?") ? "&" : "?";
@@ -14,8 +36,9 @@
     return body;
   }
 
-  function pageImage(n, width) {
-    return `/api/page?n=${n}&w=${Math.round(width)}&key=${encodeURIComponent(KEY)}`;
+  function pageImage(n, width, which = "before") {
+    const tag = which === "after" && state.preview ? `&which=after&v=${encodeURIComponent(state.preview.fix + state.preview.options.join(" "))}` : "";
+    return `/api/page?n=${n}&w=${Math.round(width)}${tag}&key=${encodeURIComponent(KEY)}`;
   }
 
   async function open(body) {
@@ -32,7 +55,7 @@
   async function poll() {
     const s = await api("/api/state");
     show(s);
-    if (s.busy) setTimeout(poll, 500);
+    if (s.busy || s.preview_busy) setTimeout(poll, 500);
   }
 
   function show(s) {
@@ -54,6 +77,12 @@
       state.path = s.path; state.page = 1; state.zoom = null; state.selected = null; state.mainLoaded = false;
     }
     state.report = s.report;
+    const previewChanged = JSON.stringify(s.preview) !== JSON.stringify(state.preview);
+    state.preview = s.preview;
+    state.previewBusy = s.preview_busy;
+    if (previewChanged) { if (!state.preview || state.preview.empty) state.which = "before"; renderProposal(); }
+    $("preview-status").textContent = s.preview_busy ? "Making the preview…" : "";
+    $("preview").disabled = s.preview_busy;
     $("empty").hidden = true;
     $("sheet").hidden = false;
     const status = $("status");
@@ -65,8 +94,13 @@
     renderPage();
   }
 
+  function showingAfter() {
+    return state.mode === "propose" && state.which === "after" && state.preview && state.preview.report;
+  }
+
   function geometry(n) {
-    return state.report.page_geometry.find((g) => g.page === n);
+    const report = showingAfter() ? state.preview.report : state.report;
+    return report.page_geometry.find((g) => g.page === n);
   }
 
   function failPages() {
@@ -145,6 +179,17 @@
       where.textContent = pagesText(f.pages) + (f.locations.length ? " · shown on the page" : "");
       b.append(head, msg, where);
       b.onclick = () => select(i);
+      for (const fix of (r.suggestions && r.suggestions[i]) || []) {
+        const s = document.createElement("span");
+        s.className = "suggest";
+        s.setAttribute("role", "button");
+        s.tabIndex = 0;
+        s.textContent = `Fix: ${fix}`;
+        const go = (e) => { e.stopPropagation(); chooseFix(fix); };
+        s.onclick = go;
+        s.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") go(e); };
+        b.append(s);
+      }
       list.append(b);
     }
     const passed = $("passed");
@@ -177,7 +222,7 @@
     const w = g.width * zoom, h = g.height * zoom;
     const img = $("page-img");
     const want = Math.min(4000, Math.ceil((w * (window.devicePixelRatio || 1)) / 200) * 200);
-    const src = pageImage(state.page, want);
+    const src = pageImage(state.page, want, showingAfter() ? "after" : "before");
     if (img.dataset.src !== src) {
       img.dataset.src = src;
       img.onload = () => { if (!state.mainLoaded) loadThumbs(); };
@@ -211,12 +256,144 @@
     if ($("show-media").checked && g.media) rect(g.media, "media", css.getPropertyValue("--media"), "2 3", 1);
     if ($("show-bleed").checked && g.bleed) rect(g.bleed, "bleed", css.getPropertyValue("--bleed"), "6 4", 1);
     if ($("show-trim").checked && g.trim) rect(g.trim, "trim", css.getPropertyValue("--trim"), "", 1);
-    if (state.selected !== null) {
+    if (state.selected !== null && !showingAfter()) {
       const f = state.report.findings[state.selected];
       // padded by a few screen pixels, so that a word or a hairline still shows at Fit
       for (const l of f.locations) if (l.page === state.page && l.view) rect(l.view, "hit", css.getPropertyValue("--hit"), "", 2, 4 / zoom);
     }
   }
+
+  // ---- propose --------------------------------------------------------------
+
+  function setMode(mode) {
+    state.mode = mode;
+    $("mode-inspect").classList.toggle("on", mode === "inspect");
+    $("mode-propose").classList.toggle("on", mode === "propose");
+    $("mode-inspect").setAttribute("aria-selected", mode === "inspect");
+    $("mode-propose").setAttribute("aria-selected", mode === "propose");
+    $("propose").hidden = mode !== "propose";
+    $("which").hidden = mode !== "propose";
+    if (state.report) renderPage();
+  }
+
+  function setWhich(which) {
+    state.which = which;
+    $("show-before").classList.toggle("on", which === "before");
+    $("show-after").classList.toggle("on", which === "after");
+    if (state.report) renderPage();
+  }
+
+  function chooseFix(name) {
+    setMode("propose");
+    $("fix").value = name;
+    renderFields();
+  }
+
+  function renderFields() {
+    const spec = FIXES[$("fix").value];
+    $("fix-help").textContent = spec.help;
+    const box = $("fix-fields");
+    box.textContent = "";
+    for (const [name, label, kind, value, extra, labels] of spec.fields) {
+      if (kind === "check") {
+        const l = document.createElement("label");
+        l.className = "check-field";
+        const c = document.createElement("input");
+        c.type = "checkbox"; c.dataset.name = name; c.dataset.kind = kind;
+        l.append(c, document.createTextNode(label));
+        box.append(l);
+        continue;
+      }
+      const l = document.createElement("label");
+      l.className = "field";
+      l.append(document.createTextNode(label));
+      let input;
+      if (kind === "select") {
+        input = document.createElement("select");
+        extra.forEach((v, i) => { const o = document.createElement("option"); o.value = v; o.textContent = (labels || extra)[i]; input.append(o); });
+        input.value = value;
+      } else if (kind === "lines") {
+        input = document.createElement("textarea");
+        input.rows = 3;
+        if (extra) input.placeholder = extra;
+      } else {
+        input = document.createElement("input");
+        input.type = kind === "number" ? "number" : "text";
+        if (kind === "number") { input.step = "0.5"; input.min = "0"; }
+        input.value = value;
+        if (extra) input.placeholder = extra;
+      }
+      input.dataset.name = name; input.dataset.kind = kind;
+      l.append(input);
+      box.append(l);
+    }
+  }
+
+  function optionTokens() {
+    const tokens = [];
+    for (const el of $("fix-fields").querySelectorAll("[data-name]")) {
+      const name = el.dataset.name, kind = el.dataset.kind;
+      if (kind === "check") { if (el.checked) tokens.push(`--${name}`); continue; }
+      const v = el.value.trim();
+      if (!v) continue;
+      if (name === "shape") { tokens.push(`--${v}`); continue; }
+      if (kind === "lines") { v.split("\n").map((x) => x.trim()).filter(Boolean).forEach((x) => tokens.push(`--${name}`, x)); continue; }
+      tokens.push(`--${name}`, v);
+    }
+    return tokens;
+  }
+
+  async function preview() {
+    $("preview-status").textContent = "";
+    try {
+      show(await api("/api/preview", { method: "POST", body: JSON.stringify({ fix: $("fix").value, options: optionTokens() }) }));
+      poll();
+    } catch (e) {
+      $("preview-status").textContent = e.message;
+    }
+  }
+
+  function renderProposal() {
+    const out = $("proposal");
+    out.textContent = "";
+    const p = state.preview;
+    if (!p) return;
+    const h = (text) => { const e = document.createElement("h3"); e.textContent = text; out.append(e); };
+    const list = (items) => {
+      const ul = document.createElement("ul");
+      const seen = new Map();
+      for (const it of items) seen.set(it.text, [...(seen.get(it.text) || []), it.page]);
+      for (const [text, pages] of seen) {
+        const li = document.createElement("li");
+        li.textContent = `${pagesText(pages)}: ${text}`;
+        ul.append(li);
+      }
+      out.append(ul);
+    };
+    if (p.error) { const e = document.createElement("p"); e.className = "error"; e.textContent = `Nothing was made: ${p.error}`; out.append(e); }
+    if (p.reasons.length) { h("What it would do"); list(p.reasons); }
+    if (p.skipped.length) { h("Left alone"); list(p.skipped); }
+    if (p.empty && !p.error) { const e = document.createElement("p"); e.className = "muted"; e.textContent = "Nothing to change."; out.append(e); }
+    if (p.effect) {
+      h(`Effect on preflight: ${p.effect.status_before} → ${p.effect.status_after}`);
+      const add = (cls, label, text) => { const d = document.createElement("div"); d.className = `change ${cls}`; d.textContent = `${label} ${text}`; out.append(d); };
+      p.effect.gone.forEach((f) => add("gone", "Gone:", `${f.check}: ${f.message}`));
+      p.effect.changed.forEach((f) => add("", "Changed:", `${f.check}: ${f.after}`));
+      p.effect.new.forEach((f) => add("new", "New:", `${f.check}: ${f.message}`));
+      if (!p.effect.gone.length && !p.effect.changed.length && !p.effect.new.length) add("", "", "No change to fails or warnings.");
+      setWhich("after");
+    }
+  }
+
+  const fixSelect = $("fix");
+  for (const name of Object.keys(FIXES)) { const o = document.createElement("option"); o.value = name; o.textContent = name; fixSelect.append(o); }
+  fixSelect.onchange = renderFields;
+  renderFields();
+  $("preview").onclick = preview;
+  $("mode-inspect").onclick = () => setMode("inspect");
+  $("mode-propose").onclick = () => setMode("propose");
+  $("show-before").onclick = () => setWhich("before");
+  $("show-after").onclick = () => setWhich("after");
 
   $("open").onclick = () => open({ choose: true });
   $("path-form").onsubmit = (e) => { e.preventDefault(); open({ path: $("path").value.trim() }); };

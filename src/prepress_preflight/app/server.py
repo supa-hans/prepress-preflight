@@ -6,8 +6,12 @@ pages open in the same browser cannot drive it), and only when the Host header
 names this machine (so a website cannot reach it through DNS tricks). Nothing
 is uploaded anywhere: files are read where they are on disk.
 
-Milestone 1 (inspect) is read-only: it opens a file, runs the same checks as
-the command line, and renders pages. It has no way to write anything.
+Inspect is read-only: it opens a file, runs the same checks as the command
+line, and renders pages. Propose runs a fix's proposal and writes the result,
+verified as always, to a private temporary folder so that before and after can
+be compared; nothing is written anywhere the user keeps files, and the
+temporary file is deleted when the next preview starts, another file is
+opened, or the app stops.
 """
 from __future__ import annotations
 
@@ -26,9 +30,17 @@ from urllib.parse import parse_qs, urlparse
 
 import pymupdf
 
+import shlex
+import shutil
+import tempfile
+
+from ..actions import _step_parser
 from ..checks import Options
 from ..document import device_matrix
 from ..engine import run
+from ..fix_cli import _settings
+from ..fixes import FIXES
+from ..model import FAIL, UNCHECKED, WARN
 
 STATIC = Path(__file__).parent / "static"
 MAX_PIXELS = 16_000_000  # the largest page render the app will make
@@ -48,6 +60,10 @@ class Session:
         self.error: str | None = None
         self.busy = False
         self._renders: dict = {}
+        self.workdir = tempfile.mkdtemp(prefix="preflight-app-")
+        self.preview: dict | None = None  # the current proposal and its effect
+        self.preview_path: str | None = None
+        self.preview_busy = False
 
     def open(self, path: str) -> None:
         path = os.path.abspath(os.path.expanduser(path))
@@ -56,6 +72,7 @@ class Session:
         with self.lock:
             self.path, self.report, self.error, self.busy = path, None, None, True
             self._renders.clear()
+            self._drop_preview()
         threading.Thread(target=self._check, args=(path,), daemon=True).start()
 
     def _check(self, path: str) -> None:
@@ -75,13 +92,74 @@ class Session:
     def state(self) -> dict:
         with self.lock:
             return {"path": self.path, "name": os.path.basename(self.path) if self.path else None,
-                    "busy": self.busy, "error": self.error, "report": self.report}
+                    "busy": self.busy, "error": self.error, "report": self.report,
+                    "preview": self.preview, "preview_busy": self.preview_busy}
 
-    def render(self, number: int, width: int) -> bytes:
-        """PNG of a page, `width` pixels wide (capped), cached."""
-        path = self.path
+    # ---- propose ----------------------------------------------------------
+
+    def _drop_preview(self):
+        if self.preview_path and os.path.exists(self.preview_path):
+            os.remove(self.preview_path)
+        self.preview, self.preview_path = None, None
+        self._renders = {k: v for k, v in self._renders.items() if k[0] == self.path}
+
+    def start_preview(self, fix: str, tokens: list[str]) -> None:
+        if fix not in FIXES:
+            raise ValueError(f"Unknown fix: {fix}")
+        try:
+            ns = _step_parser().parse_args(tokens)
+        except (Exception, SystemExit) as exc:
+            raise ValueError(f"Those options are not right: {exc}") from None
+        options, extra = _settings(ns)
+        with self.lock:
+            if self.path is None or self.report is None:
+                raise ValueError("Open a file and wait for its check first")
+            if self.preview_busy:
+                raise ValueError("A preview is already being made")
+            self._drop_preview()
+            self.preview_busy = True
+            path, report = self.path, self.report
+        threading.Thread(target=self._preview, args=(path, report, fix, tokens, options, extra), daemon=True).start()
+
+    def _preview(self, path, before, fix, tokens, options, extra):
+        propose, write = FIXES[fix]
+        out = os.path.join(self.workdir, f"preview-{secrets.token_hex(4)}.pdf")
+        result = {"fix": fix, "options": tokens, "reasons": [], "skipped": [], "changes": [], "empty": True,
+                  "error": None, "report": None, "effect": None}
+        try:
+            with RENDER_LOCK:
+                proposal = propose(path, options, **extra)
+                result["reasons"] = [{"page": p, "text": t} for p, t in proposal.reasons]
+                result["skipped"] = [{"page": p, "text": t} for p, t in proposal.skipped]
+                result["changes"] = [{"page": c.page, "box": c.box, "before": c.before_mm, "after": c.after_mm}
+                                     for c in proposal.changes]
+                result["empty"] = proposal.empty
+                if not proposal.empty:
+                    write(proposal, out)  # verified, as every fix is
+                    after = run(out, options)
+            if not proposal.empty:
+                result["report"] = _report(after)
+                result["effect"] = effect(before, result["report"])
+        except Exception as exc:  # shown to the user; nothing is kept
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            if os.path.exists(out):
+                os.remove(out)
+            out = None
+        with self.lock:
+            if self.path == path:
+                self.preview, self.preview_path, self.preview_busy = result, (out if not result["empty"] else None), False
+            elif out and os.path.exists(out):
+                os.remove(out)
+
+    def close(self):
+        shutil.rmtree(self.workdir, ignore_errors=True)
+
+    def render(self, number: int, width: int, which: str = "before") -> bytes:
+        """PNG of a page, `width` pixels wide (capped), cached. `which` is
+        "before" (the file as it is) or "after" (the current preview)."""
+        path = self.preview_path if which == "after" else self.path
         if path is None:
-            raise ValueError("No file is open")
+            raise ValueError("No file is open" if which != "after" else "There is no preview")
         key = (path, number, width)
         if key in self._renders:
             return self._renders[key]
@@ -127,7 +205,53 @@ def _report(result) -> dict:
                     r = (pymupdf.Rect(loc["bbox"]) * m).normalize()
                     loc["view"] = [round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2)]
     data["page_geometry"] = pages
+    data["suggestions"] = suggest(data)
     return data
+
+
+NOTES_SHOWN = {"Spot colours", "Trim marks", "Page size"}
+
+
+def effect(before: dict, after: dict) -> dict:
+    """What a fix changes in the findings: gone, new, and changed (same check and
+    severity, different figures). Fails, warnings and could-not-checks, plus the
+    notes a fix may be meant to change."""
+    def summary(report):
+        return {(f["check"], f["severity"], f["message"]) for f in report["findings"]
+                if f["severity"] in (FAIL, WARN, UNCHECKED) or f["check"] in NOTES_SHOWN}
+    old, new = summary(before), summary(after)
+    gone, added, changed = sorted(old - new), sorted(new - old), []
+    for item in list(gone):
+        twin = next((a for a in added if a[:2] == item[:2]), None)
+        if twin is not None:
+            gone.remove(item)
+            added.remove(twin)
+            changed.append({"check": item[0], "severity": item[1], "before": item[2], "after": twin[2]})
+    as_dicts = lambda items: [{"check": c, "severity": s, "message": m} for c, s, m in items]
+    return {"status_before": before["status"], "status_after": after["status"],
+            "gone": as_dicts(gone), "new": as_dicts(added), "changed": changed}
+
+
+def suggest(report: dict) -> list[list[str]]:
+    """For each finding, the fixes that address it."""
+    out = []
+    for f in report["findings"]:
+        check, sev, msg = f["check"], f["severity"], f["message"]
+        fixes = []
+        if check == "Trim marks" and sev == WARN:
+            fixes.append("trim-from-marks")
+        elif check == "Bleed artwork" and sev == FAIL:
+            fixes.append("add-bleed")
+        elif check == "Bleed box" and sev in (FAIL, WARN):
+            fixes += ["add-bleed", "set-boxes"]
+        elif check == "Spot colours" and sev in (FAIL, "note") and "Non-printing" not in msg:
+            fixes.append("spot-to-cmyk")
+        elif check == "Spot colours" and "spelt more than one way" in msg:
+            fixes.append("rename-spot")
+        elif check == "Page size" and sev == WARN and "does not match the expected" in msg:
+            fixes.append("scale")
+        out.append(fixes)
+    return out
 
 
 def choose_file() -> str | None:
@@ -192,7 +316,10 @@ def make_handler(session: Session, key: str, port_ref: dict):
                 if url.path == "/api/page":
                     number = int((query.get("n") or ["1"])[0])
                     width = max(64, min(4000, int((query.get("w") or ["800"])[0])))
-                    return self._send(HTTPStatus.OK, session.render(number, width), "image/png")
+                    which = (query.get("which") or ["before"])[0]
+                    return self._send(HTTPStatus.OK, session.render(number, width, which), "image/png")
+                if url.path == "/api/fixes":
+                    return self._json(HTTPStatus.OK, {"fixes": sorted(FIXES)})
                 return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
             except ValueError as exc:
                 return self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
@@ -217,6 +344,12 @@ def make_handler(session: Session, key: str, port_ref: dict):
                     if not path:
                         raise ValueError("Choose a PDF file")
                     session.open(path)
+                    return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/preview":
+                    fix = body.get("fix", "")
+                    tokens = body.get("options", "")
+                    tokens = shlex.split(tokens) if isinstance(tokens, str) else [str(t) for t in tokens]
+                    session.start_preview(fix, tokens)
                     return self._json(HTTPStatus.OK, session.state())
                 return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")
             except ValueError as exc:
@@ -249,7 +382,7 @@ def main(argv) -> int:
     parser.add_argument("--key", help=argparse.SUPPRESS)  # fixed key, for development only
     args = parser.parse_args(argv)
     try:
-        server, url, _ = serve(args.file, args.port, not args.no_browser, key=args.key)
+        server, url, session = serve(args.file, args.port, not args.no_browser, key=args.key)
     except ValueError as exc:
         print(f"preflight app: {exc}", file=sys.stderr)
         return 2
@@ -261,4 +394,5 @@ def main(argv) -> int:
         pass
     finally:
         server.server_close()
+        session.close()
     return 0

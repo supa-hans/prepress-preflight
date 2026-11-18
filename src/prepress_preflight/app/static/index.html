@@ -13,8 +13,8 @@
     <span id="status" class="badge" hidden></span>
   </div>
   <div class="modes" role="tablist" aria-label="Mode">
-    <button class="mode on" role="tab" aria-selected="true">Inspect</button>
-    <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 2">Propose</button>
+    <button class="mode on" id="mode-inspect" role="tab" aria-selected="true">Inspect</button>
+    <button class="mode" id="mode-propose" role="tab" aria-selected="false">Propose</button>
     <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Review</button>
     <button class="mode" role="tab" aria-selected="false" disabled title="Coming in milestone 3">Export</button>
   </div>
@@ -31,6 +31,9 @@
       <label><input type="checkbox" id="show-trim" checked> Trim</label>
       <label><input type="checkbox" id="show-bleed" checked> Bleed</label>
       <label><input type="checkbox" id="show-media"> Page edge</label>
+      <span id="which" class="which" hidden role="group" aria-label="Show">
+        <button id="show-before" class="on">Before</button><button id="show-after">After</button>
+      </span>
       <span class="spacer"></span>
       <button id="zoom-out" aria-label="Zoom out">−</button>
       <button id="zoom-fit">Fit</button>
@@ -56,6 +59,19 @@
   </section>
 
   <aside class="side">
+    <section id="propose" class="propose" hidden>
+      <label class="field">Fix
+        <select id="fix"></select>
+      </label>
+      <div id="fix-help" class="muted small"></div>
+      <div id="fix-fields" class="fields"></div>
+      <div class="row">
+        <button id="preview" class="primary">Preview</button>
+        <span id="preview-status" class="muted small"></span>
+      </div>
+      <p class="muted small">A preview is written to a private temporary file, verified, and shown here. Nothing is saved to your folders.</p>
+      <div id="proposal" class="proposal"></div>
+    </section>
     <div id="summary" class="summary"></div>
     <div id="findings" class="findings"></div>
     <details id="passed" class="passed" hidden><summary></summary><p></p></details>

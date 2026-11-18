@@ -1,5 +1,6 @@
 """The local app's server: access rules, the report it serves, page renders."""
 import json
+import os
 import threading
 import time
 import urllib.error
@@ -137,3 +138,80 @@ def test_opening_a_file_never_changes_it(app, make):
     wait_report(base)
     get(base, "/api/page?n=1&w=500")
     assert hashlib.sha256(open(path, "rb").read()).hexdigest() == before
+
+
+# --- propose
+def wait_preview(base):
+    for _ in range(400):
+        state = json.loads(get(base, "/api/state")[2])
+        if not state["preview_busy"]:
+            return state
+        time.sleep(0.05)
+    raise AssertionError("preview never finished")
+
+
+def no_bleed(make):
+    from conftest import TRIM
+    return make(b"0 0 0 1 k " + rect(TRIM) + b"f", media=TRIM, trim=None, bleed=None)
+
+
+def test_preview_shows_a_fix_before_and_after(app, make):
+    import hashlib
+    path = no_bleed(make)
+    before = hashlib.sha256(open(path, "rb").read()).hexdigest()
+    base = app(path)
+    report = wait_report(base)["report"]
+    i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Bleed artwork")
+    assert "add-bleed" in report["suggestions"][i]
+    get(base, "/api/preview", data=json.dumps({"fix": "add-bleed", "options": ["--marks"]}).encode())
+    preview = wait_preview(base)["preview"]
+    assert preview["error"] is None and not preview["empty"]
+    assert preview["effect"]["status_before"] == "FAIL"
+    assert any(f["check"] == "Bleed artwork" for f in preview["effect"]["gone"])
+    status, kind, body = get(base, "/api/page?n=1&w=300&which=after")
+    assert kind == "image/png" and body[:4] == b"\x89PNG"
+    assert hashlib.sha256(open(path, "rb").read()).hexdigest() == before  # never the user's file
+
+
+def test_preview_files_stay_in_a_private_temporary_folder(app, make, tmp_path):
+    path = no_bleed(make)
+    folder_before = set(os.listdir(os.path.dirname(path)))
+    base = app(path)
+    wait_report(base)
+    get(base, "/api/preview", data=json.dumps({"fix": "add-bleed", "options": []}).encode())
+    wait_preview(base)
+    assert set(os.listdir(os.path.dirname(path))) == folder_before
+
+
+def test_preview_with_nothing_to_change(app, make):
+    base = app(make(b"0 0 0 1 k 100 100 50 50 re f"))
+    wait_report(base)
+    get(base, "/api/preview", data=json.dumps({"fix": "trim-from-marks", "options": []}).encode())
+    preview = wait_preview(base)["preview"]
+    assert preview["empty"] and preview["effect"] is None
+    with pytest.raises(urllib.error.HTTPError):
+        get(base, "/api/page?n=1&w=300&which=after")
+
+
+def test_preview_rejects_bad_options_and_unknown_fixes(app, make):
+    base = app(make(b"0 0 0 1 k 100 100 50 50 re f"))
+    wait_report(base)
+    for body in ({"fix": "scale", "options": ["--trim", "big"]}, {"fix": "make-it-nice", "options": []}):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            get(base, "/api/preview", data=json.dumps(body).encode())
+        assert e.value.code == 400
+
+
+def test_a_failing_fix_is_reported_not_hidden(app, make, monkeypatch):
+    import prepress_preflight.fixes as fixes
+    from prepress_preflight.fixes.append import AppendError
+    propose, _ = fixes.FIXES["add-bleed"]
+
+    def broken(p, dst):
+        raise AppendError("verification failed: test")
+    monkeypatch.setitem(fixes.FIXES, "add-bleed", (propose, broken))
+    base = app(no_bleed(make))
+    wait_report(base)
+    get(base, "/api/preview", data=json.dumps({"fix": "add-bleed", "options": []}).encode())
+    preview = wait_preview(base)["preview"]
+    assert "verification failed" in preview["error"]

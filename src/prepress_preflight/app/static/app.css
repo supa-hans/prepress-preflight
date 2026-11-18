@@ -80,3 +80,25 @@ input:not([type]) { background: var(--panel); border: 0.5px solid var(--line-str
   .stage { height: 70vh; }
   .side { border-left: 0; border-top: 0.5px solid var(--line); }
 }
+
+.small { font-size: 12px; }
+.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+@media (prefers-color-scheme: dark) { .primary { color: #0c1b2b; } }
+.which { display: inline-flex; border: 0.5px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; }
+.which button { border: 0; border-radius: 0; padding: 3px 12px; }
+.which button.on { background: var(--accent-bg); color: var(--accent); }
+.propose { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 0.5px solid var(--line); }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.field select, .field input, .field textarea { font: inherit; color: var(--text); background: var(--panel); border: 0.5px solid var(--line-strong); border-radius: var(--radius); padding: 5px 8px; }
+.check-field { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.fields { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; gap: 10px; align-items: center; }
+.proposal { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.proposal h3 { font-size: 13px; font-weight: 500; margin: 6px 0 0; }
+.proposal ul { margin: 0; padding-left: 18px; }
+.proposal li { margin: 2px 0; }
+.change { border-left: 3px solid var(--line-strong); padding: 2px 8px; }
+.change.gone { border-color: var(--trim); }
+.change.new { border-color: var(--hit); }
+.suggest { align-self: flex-start; font-size: 12px; padding: 2px 8px; color: var(--accent); }

@@ -541,7 +541,27 @@ Tried in the browser on the catalogue (56 pages: white overprint on page 48
 outlined) and the 509 MB banner (the 200% black Multiply area outlined, and
 the trim inferred from its crop marks).
 
-Next: milestone 2, Propose (a fix's before/after on the canvas).
+## The app: milestone 2, Propose (added 2026-11-18)
+
+Choose a fix, from the Propose tab or from the "Fix: …" button the app puts
+on a finding it can address, set its options, and press Preview. The fix's
+proposal runs and its result is written, verified as every fix is, to a
+private temporary folder. Nothing goes to the user's folders, and the
+preview is deleted when the next one starts, another file is opened, or the
+app stops. The canvas then flips between Before and After, and the panel shows
+what the fix would do, what it leaves alone and why, and the effect on
+preflight (gone, changed, new).
+
+Suggestions: Trim marks (inferred) -> trim-from-marks; Bleed artwork ->
+add-bleed; Bleed box -> add-bleed or set-boxes; printing spots ->
+spot-to-cmyk; one ink spelt two ways -> rename-spot; size not as expected ->
+scale. The fix options in the app are the same as on the command line and go
+through the same checks, so a bad value is refused with the reason.
+
+Tried on the place cards: "Fix: add-bleed" with marks and clip gave a 114-page
+preview showing the made bleed and marks, FAIL -> PASS.
+
+Next: milestone 3, Review and export (queue fixes, then write the new file).
 
 ## Next tasks, in order
 
