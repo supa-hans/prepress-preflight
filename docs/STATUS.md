@@ -485,8 +485,30 @@ names used everywhere the old were, and a plain rename renders identically.
 On the catalogue: "Silver" -> "PANTONE 877 C", and "PANTONE 286 C" merged into
 "PANTONE 285 C", gives 5 spots instead of 6.
 
-Next: converting spots to CMYK. This rewrites the colour instructions in the
-artwork, so it is to be proposed before it is built.
+`preflight fix spot-to-cmyk [--spot NAME ...]` (added 2026-11-18, approved as
+proposed) converts spots to CMYK using each spot's own CMYK definition. A 60%
+tint becomes 60% of that definition. Flat colour, strokes and text have their
+colour instructions rewritten: the first fix to edit content streams, so the
+rewritten page streams are new objects and the originals stay in the file,
+unused. Placed graphics and tiling patterns are rewritten in place as
+replacement objects. Spot gradients become CMYK gradients with the same stops.
+Overprint settings are untouched.
+
+A spot is converted only if every use of it can be: a plain CMYK definition,
+and no use inside an image, an inline image, an annotation, or mixed with
+other inks (DeviceN). Otherwise the whole spot is left alone, with the reason
+and the pages. Non-printing spots, registration and process names are never
+candidates. Spots defined in Lab or ICC are refused, because converting them
+needs a colour profile.
+
+Verified: the converted spots are no longer used anywhere, and every page that
+used one renders the same as a composite CMYK proof before and after (pixels
+within 3/255).
+
+On the catalogue: Deep Blue, PANTONE 165 C, PANTONE 286 C and Silver are
+converted, on 9 pages, in about 25 seconds. PANTONE 283 C and 285 C are left
+alone: they share one two-ink gradient on page 4. Converting that needs a
+sampled function, which is not built yet.
 
 ## Next tasks, in order
 
@@ -501,7 +523,8 @@ artwork, so it is to be proposed before it is built.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: a fix for the banner's Multiply fault (parked by the owner); spot colour tools; desktop interface; object
+6. Later phases: converting two-ink (DeviceN) spot gradients; a fix for the
+   banner's Multiply fault (parked by the owner); spot colour tools; desktop interface; object
    tree and editing.
 
 ## Interface model (for later)

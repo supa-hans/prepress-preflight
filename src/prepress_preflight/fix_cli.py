@@ -32,6 +32,8 @@ def _summary(result) -> set:
 
 
 HEADERS = {
+    "spot-to-cmyk": "Proposed changes (the colour instructions for these spots are rewritten in CMYK; nothing else in the "
+                    "artwork changes):",
     "rename-spot": "Proposed changes (only the spot colour definitions change; the artwork is not touched):",
     "scale": "Proposed changes (the artwork is scaled as a whole, not edited; page boxes and link positions scale with it):",
     "add-bleed": "Proposed changes (the original artwork inside the trim is not changed; bleed is added beneath it, "

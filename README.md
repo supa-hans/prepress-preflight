@@ -54,6 +54,7 @@ preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press
 preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save a chain under a name
 preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
 preflight fix rename-spot job.pdf --spot "Pantone 185C=PANTONE 185 C" --write job-spots.pdf
+preflight fix spot-to-cmyk catalogue.pdf --write catalogue-cmyk.pdf  # spots to CMYK
 ```
 
 | Fix | What it changes |
@@ -63,6 +64,7 @@ preflight fix rename-spot job.pdf --spot "Pantone 185C=PANTONE 185 C" --write jo
 | add-marks | Adds trim marks outside the bleed box, without making bleed. Keeps existing marks that already point at the trim, unless `--clip-to-bleed` is also asked for. |
 | scale | Scales the whole page so the trim is the job size (`--trim WxH`). Up to 1% change of shape is made exactly; beyond that it needs `--fill` (crop to cover) or `--fit` (fit inside). Crop marks are redrawn when the shape changes. |
 | rename-spot | Renames a spot colour, or merges it into one already in the file (`--spot "OLD=NEW"`). Only the colour definitions change. |
+| spot-to-cmyk | Converts spot colours to CMYK using each spot's own CMYK definition (`--spot NAME` for particular ones). A spot is converted only if every use of it can be; the result is verified to look the same. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
 The new file is the original, byte for byte, with the changes appended (a PDF
