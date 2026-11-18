@@ -16,25 +16,13 @@ from .checks import Options
 from .cli_common import parse_trim
 from .engine import run
 from .fixes import FIXES
+from .fixes.chain import deliver, final_file, parse_chain, run_chain
 from .model import FAIL, UNCHECKED, WARN
 from .report import page_list
 
 
 def _summary(result) -> set:
     return {(f.check, f.severity, f.message) for f in result.findings if f.severity in (FAIL, WARN, UNCHECKED)}
-
-
-def _preview(proposal, options, write) -> tuple:
-    """Preflight before, and after on a temporary copy that is deleted again."""
-    before = run(proposal.path, options)
-    folder = tempfile.mkdtemp(prefix="preflight-preview-")
-    try:
-        trial = os.path.join(folder, "preview.pdf")
-        write(proposal, trial)
-        after = run(trial, options)
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
-    return before, after
 
 
 HEADERS = {
@@ -54,8 +42,8 @@ def _grouped(items, total):
     return [(page_list(pages, total), text) for text, pages in groups.items()]
 
 
-def _print_proposal(proposal, total) -> None:
-    print(f"FIX  {proposal.fix}  {os.path.basename(proposal.path)}")
+def _print_proposal(proposal, total, label=None) -> None:
+    print(f"FIX  {proposal.fix}  {label or os.path.basename(proposal.path)}")
     for where, reason in _grouped(proposal.reasons, total):
         print(f"  {where}: {reason}")
     for where, why in _grouped(proposal.skipped, total):
@@ -98,8 +86,10 @@ def _page_count(path) -> int:
 
 def main(argv) -> int:
     parser = argparse.ArgumentParser(prog="preflight fix",
-                                     description="Propose a fix, and write it to a new file only when asked.")
-    parser.add_argument("name", choices=sorted(FIXES), help="which fix")
+                                     description="Propose a fix, or several joined with +, and write the result to a "
+                                                 "new file only when asked.")
+    parser.add_argument("name", help="which fix: " + ", ".join(sorted(FIXES)) +
+                                     "; join several with + to run them in order, e.g. trim-from-marks+add-bleed")
     parser.add_argument("file", help="the PDF to fix; it is never modified")
     parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
@@ -120,42 +110,60 @@ def main(argv) -> int:
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
     args = parser.parse_args(argv)
 
-    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim, bound=args.bound)
-    propose, write = FIXES[args.name]
     try:
-        proposal = propose(args.file, options, method=args.method, clip=args.clip_to_bleed, marks=args.marks,
-                           mode=args.mode)
+        names = parse_chain(args.name, FIXES)
+    except ValueError as exc:
+        print(f"preflight fix: {exc}", file=sys.stderr)
+        return 2
+    if args.write and os.path.exists(args.write):
+        print(f"preflight fix: {args.write} already exists; choose a new file name", file=sys.stderr)
+        return 2
+    options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim, bound=args.bound)
+    extra = dict(method=args.method, clip=args.clip_to_bleed, marks=args.marks, mode=args.mode)
+    try:
+        total = _page_count(args.file)
     except Exception as exc:
         print(f"preflight fix: could not read {args.file}: {exc}", file=sys.stderr)
         return 2
-    _print_proposal(proposal, _page_count(args.file))
-    if proposal.empty:
-        return 0
-    if args.write and os.path.exists(args.write):
-        print(f"\npreflight fix: {args.write} already exists; choose a new file name", file=sys.stderr)
-        return 2
-    if not args.no_preview:
-        try:
-            _print_effect(*_preview(proposal, options, write))
-        except Exception as exc:
-            print(f"\npreflight fix: the preview failed ({exc}); nothing was written", file=sys.stderr)
-            return 2
-    if not args.write:
-        print("\nNothing written. To write the fixed copy: add --write NEW.pdf")
-        return 0
-    if not args.yes:
-        if not sys.stdin.isatty():
-            print("\npreflight fix: confirmation needed; run it in a terminal, or add --yes", file=sys.stderr)
-            return 2
-        answer = input(f"\nWrite these changes to the new file {args.write}? The original is not changed. Type yes: ")
-        if answer.strip().lower() != "yes":
-            print("Nothing written.")
-            return 1
+    workdir = tempfile.mkdtemp(prefix="preflight-fix-")
     try:
-        write(proposal, args.write)
-    except Exception as exc:
-        print(f"preflight fix: nothing written: {exc}", file=sys.stderr)
-        return 2
-    print(f"Written and verified: {args.write}")
-    print("  The original's bytes are unchanged at the start of the new file; the changes were added after them.")
-    return 0
+        try:
+            steps = run_chain(args.file, names, FIXES, options, workdir, **extra)
+        except Exception as exc:
+            print(f"preflight fix: {exc}; nothing was written", file=sys.stderr)
+            return 2
+        for i, step in enumerate(steps, 1):
+            if len(steps) > 1:
+                print(("\n" if i > 1 else "") + f"STEP {i} of {len(steps)}" + (", on the result of the steps before" if i > 1 else ""))
+            _print_proposal(step.proposal, total, os.path.basename(args.file))
+        final = final_file(steps)
+        if final is None:
+            return 0
+        if not args.no_preview:
+            try:
+                _print_effect(run(args.file, options), run(final, options))
+            except Exception as exc:
+                print(f"\npreflight fix: the preview failed ({exc}); nothing was written", file=sys.stderr)
+                return 2
+        if not args.write:
+            print("\nNothing written. To write the fixed copy: add --write NEW.pdf")
+            return 0
+        if not args.yes:
+            if not sys.stdin.isatty():
+                print("\npreflight fix: confirmation needed; run it in a terminal, or add --yes", file=sys.stderr)
+                return 2
+            what = "these changes" if len(steps) == 1 else f"all {len(steps)} steps"
+            answer = input(f"\nWrite {what} to the new file {args.write}? The original is not changed. Type yes: ")
+            if answer.strip().lower() != "yes":
+                print("Nothing written.")
+                return 1
+        try:
+            deliver(args.file, final, args.write)
+        except Exception as exc:
+            print(f"preflight fix: nothing written: {exc}", file=sys.stderr)
+            return 2
+        print(f"Written and verified: {args.write}")
+        print("  The original's bytes are unchanged at the start of the new file; the changes were added after them.")
+        return 0
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
