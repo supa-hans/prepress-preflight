@@ -348,3 +348,15 @@ def test_a_dropped_pdf_is_opened_where_it_is(make):
         assert "exists" in handle_drop(missing, session)
     finally:
         session.close()
+
+
+def test_objects_under_a_point(app, make):
+    base = app(make(b"0 0 0 1 k 100 100 100 100 re f 1 0 0 0 k 150 150 100 100 re f"))
+    wait_report(base)
+    height = MEDIA[3] - MEDIA[1]
+    _, kind, body = get(base, f"/api/objects?n=1&x=175&y={height - 175}")
+    assert kind.startswith("application/json")
+    assert [o["colour"] for o in json.loads(body)["objects"]] == ["C100 M0 Y0 K0", "C0 M0 Y0 K100"]
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(base, "/api/objects?n=5&x=1&y=1")
+    assert e.value.code == 400

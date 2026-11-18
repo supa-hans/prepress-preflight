@@ -69,10 +69,11 @@ _DEVICE = {
 class Event:
     """One painted object."""
 
-    __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width")
+    __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width",
+                 "font", "blend", "groups")
 
     def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
-                 width=None):
+                 width=None, font=None, blend="Normal", groups=()):
         self.kind = kind  # path | text | image | imagemask | shading
         self.paint = paint  # fill | stroke
         self.cs = cs
@@ -90,6 +91,12 @@ class Event:
         # inside a pattern cell.
         self.loc = loc
         self.width = width  # stroke weight in points as placed on the page, strokes only
+        self.font = font  # the font's name, text only
+        self.blend = blend  # the blend mode in force
+        # The forms it sits inside, outermost first, each as (name, blend mode
+        # of the group): a group is blended as a whole, so an object inside a
+        # Multiply group is painted Normal but still multiplies on the page.
+        self.groups = groups
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -107,6 +114,7 @@ class FormFrame:
     xobj: object  # the form itself (pikepdf stream)
     isolated: bool  # an isolated transparency group: blends only within itself
     knockout: bool
+    blend: str = "Normal"  # the blend mode the group is painted with ("Normal" for a plain form)
 
 
 @dataclass(eq=False)
@@ -277,8 +285,14 @@ class PageWalker:
             # Line width is in user space: scale it by the current matrix.
             a, b, c, d = st.ctm[:4]
             width = st.lw * math.sqrt(abs(a * d - b * c))
+        font = None
+        if kind == "text" and st.font is not None:
+            font = str(st.font.get("/BaseFont", "/(unnamed)"))[1:]
+            if len(font) > 7 and font[6] == "+":
+                font = font[7:]  # drop the subset tag
         self.out.events.append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
-                                     parts if located else None, self._loc(st, located), width))
+                                     parts if located else None, self._loc(st, located), width, font, st.bm,
+                                     tuple((f.name, f.blend) for f in self._chain)))
 
     def _loc(self, st, located):
         return (tuple(f.name for f in self._chain), self._idx, st.tr) if located else None
@@ -566,7 +580,8 @@ class PageWalker:
                 sub.bm = "Normal"
             frame = FormFrame(str(name)[1:], idx, xobj,
                               group is not None and bool(group.get("/I", False)),
-                              group is not None and bool(group.get("/K", False)))
+                              group is not None and bool(group.get("/K", False)),
+                              st.bm if group is not None else "Normal")
             m = xobj.get("/Matrix")
             if m is not None:
                 mv = _nums(m)

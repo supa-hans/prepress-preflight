@@ -664,6 +664,32 @@ screen, including dragging a PDF onto the window (2026-11-18).
 
 Next for the app: tidying the screens, when the owner has notes.
 
+## Objects under a point (added 2026-11-18)
+
+The first, read-only step of the object tree. In the app, clicking anywhere on
+the page lists every object under that point, topmost first, in an "Objects
+here" panel: what it is (filled shape, line, text, image, gradient), its
+colour as an operator would write it (C94 M66 Y3 K64, PANTONE 186 C 50%,
+Registration), total ink, line weight as printed, font, pixel size and
+effective ppi, the forms it sits inside, and overprint or blend modes.
+Hovering an entry outlines it on the page; Escape or × closes the panel.
+
+It is built on the same content walker as the checks (`objects.py`), so what
+it lists is exactly what the checks measured, with the same limits: an object
+counts where it is drawn even where a clipping path hides it, and text
+positions are approximate (one em per run). Clicks are turned back into PDF
+coordinates with `device_matrix`, so rotated and UserUnit pages work.
+
+Blend groups: a transparency group is blended onto the page as a whole, and
+the objects inside start out Normal. So the walker now records each form's
+group blend mode, and an object inside a Multiply group is shown as "in a
+Multiply group". On the pull-up banner, one click on the black panel shows the
+fault: K100 inside Fm0 (Multiply group), over a plain K100 box.
+
+Next steps for the object tree, when wanted: select an object to see its full
+details (colour space definition, graphics state, the content it comes from),
+then the first edits, which will follow the propose, review and export rules.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -677,9 +703,8 @@ Next for the app: tidying the screens, when the owner has notes.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: converting two-ink (DeviceN) spot gradients; a fix for the
-   banner's Multiply fault (parked by the owner); spot colour tools; desktop interface; object
-   tree and editing.
+6. Later phases: a fix for the banner's Multiply fault (parked by the owner);
+   checking the two-ink gradient midpoint in Acrobat; object editing.
 
 ## Interface model (for later)
 

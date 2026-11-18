@@ -126,3 +126,13 @@ input:not([type]) { background: var(--panel); border: 0.5px solid var(--line-str
 .drop { outline: 2px dashed var(--accent); outline-offset: -8px; }
 
 .notice { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 0.5px solid var(--line-strong); border-radius: var(--radius); padding: 8px 14px; max-width: 520px; }
+
+.sheet img { cursor: crosshair; }
+.here { border: 0.5px solid var(--line-strong); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.here .row button { padding: 0 8px; }
+.here-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; max-height: 40vh; overflow-y: auto; }
+.here-list li { cursor: default; }
+.here-list li:hover { background: var(--bg); }
+.here-list .o-kind { font-weight: 500; }
+.here-list .o-props { color: var(--muted); font-size: 12px; }
+.here-list .o-flag { color: var(--warn); }

@@ -6,7 +6,7 @@
   const LABEL = { fail: "Fail", unchecked: "Could not check", warn: "Warn", note: "Note" };
   const state = { report: null, page: 1, zoom: null, selected: null, path: null, mode: "inspect", which: "before",
                   preview: null, previewBusy: false, queue: [], queueReport: null, queueEffect: null,
-                  exported: null, plate: "", inksFor: null };
+                  exported: null, plate: "", inksFor: null, here: null, hereHover: null, herePoint: null };
 
   // What each fix asks for. Field values become the same options the command line takes.
   const FIXES = {
@@ -317,12 +317,80 @@
     if ($("show-media").checked && g.media) rect(g.media, "media", css.getPropertyValue("--media"), "2 3", 1);
     if ($("show-bleed").checked && g.bleed) rect(g.bleed, "bleed", css.getPropertyValue("--bleed"), "6 4", 1);
     if ($("show-trim").checked && g.trim) rect(g.trim, "trim", css.getPropertyValue("--trim"), "", 1);
+    if (state.herePoint && state.herePoint.page === state.page) {
+      const [px, py] = state.herePoint.at;
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", px); c.setAttribute("cy", py); c.setAttribute("r", 4 / zoom);
+      c.setAttribute("fill", "none"); c.setAttribute("stroke", css.getPropertyValue("--accent"));
+      c.setAttribute("stroke-width", 2); c.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.append(c);
+      if (state.hereHover && state.hereHover.view) rect(state.hereHover.view, "obj", css.getPropertyValue("--accent"), "", 2, 2 / zoom);
+    }
     if (state.selected !== null && !showingAfter()) {
       const f = state.report.findings[state.selected];
       // padded by a few screen pixels, so that a word or a hairline still shows at Fit
       for (const l of f.locations) if (l.page === state.page && l.view) rect(l.view, "hit", css.getPropertyValue("--hit"), "", 2, 4 / zoom);
     }
   }
+
+  // ---- objects under a point ---------------------------------------------------
+
+  async function inspectAt(event) {
+    const g = geometry(state.page);
+    if (!g) return;
+    const img = $("page-img").getBoundingClientRect();
+    const x = (event.clientX - img.left) / img.width * g.width;
+    const y = (event.clientY - img.top) / img.height * g.height;
+    state.herePoint = { page: state.page, at: [x, y] };
+    state.hereHover = null;
+    let objects = [];
+    try { objects = (await api(`/api/objects?n=${state.page}&x=${x.toFixed(2)}&y=${y.toFixed(2)}&which=${view()[0]}`)).objects; }
+    catch (e) { objects = []; }
+    showObjects(objects);
+    renderPage();
+  }
+
+  function showObjects(objects) {
+    $("here").hidden = false;
+    $("here-none").hidden = objects.length > 0;
+    const ol = $("here-list");
+    ol.textContent = "";
+    for (const o of objects) {
+      const li = document.createElement("li");
+      const kind = document.createElement("div");
+      kind.className = "o-kind";
+      kind.textContent = `${o.kind}: ${o.colour}`;
+      const props = document.createElement("div");
+      props.className = "o-props";
+      const bits = [];
+      if (o.ink !== null && o.ink !== undefined) bits.push(`total ink ${o.ink}%`);
+      if (o.width !== undefined) bits.push(`${o.width} pt line`);
+      if (o.font) bits.push(o.font);
+      if (o.pixels) bits.push(`${o.pixels[0]} × ${o.pixels[1]} px`);
+      if (o.ppi) bits.push(`${o.ppi} ppi`);
+      if (o.inside) bits.push(`inside ${o.inside}`);
+      props.textContent = bits.join(" · ");
+      li.append(kind, props);
+      const flags = [];
+      if (o.overprint) flags.push("overprint");
+      if (o.blend && o.blend !== "Normal") flags.push(`blend: ${o.blend}`);
+      if (o.group_blend) flags.push(`in a ${o.group_blend} group`);
+      if (flags.length) { const f = document.createElement("div"); f.className = "o-flag small"; f.textContent = flags.join(" · "); li.append(f); }
+      li.onmouseenter = () => { state.hereHover = o; renderPage(); };
+      li.onmouseleave = () => { state.hereHover = null; renderPage(); };
+      ol.append(li);
+    }
+  }
+
+  function closeObjects() {
+    $("here").hidden = true;
+    state.herePoint = null; state.hereHover = null;
+    if (state.report) renderPage();
+  }
+
+  $("page-img").addEventListener("click", inspectAt);
+  $("here-close").onclick = closeObjects;
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("here").hidden) closeObjects(); });
 
   // ---- plates ---------------------------------------------------------------
 
