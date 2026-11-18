@@ -505,10 +505,43 @@ Verified: the converted spots are no longer used anywhere, and every page that
 used one renders the same as a composite CMYK proof before and after (pixels
 within 3/255).
 
-On the catalogue: Deep Blue, PANTONE 165 C, PANTONE 286 C and Silver are
-converted, on 9 pages, in about 25 seconds. PANTONE 283 C and 285 C are left
-alone: they share one two-ink gradient on page 4. Converting that needs a
-sampled function, which is not built yet.
+On the catalogue all six spots are now converted, including PANTONE 283 C and
+285 C, which share a two-ink gradient on page 4 (added 2026-11-18). After
+conversion the catalogue has no spot colours, and passes `--cmyk-only` on that
+check.
+
+How the rest was made convertible:
+
+- `functions.py` evaluates PDF functions of every type: sampled, exponential,
+  stitching, and the PostScript calculator that InDesign writes for two-ink
+  colours. On the catalogue's own two-ink space it agrees with MuPDF to within
+  0.36% ink, about one step of MuPDF's 8-bit output.
+- A spot defined by any of those functions converts, not only the simple
+  straight-line kind.
+- A two-ink (DeviceN) colour converts when every ink in it is being converted
+  or is a process ink. A mix with any other ink, such as a dieline, is still
+  left alone.
+- A gradient that cannot be folded in exactly becomes a sampled CMYK gradient
+  at 256 steps, 16 bits each.
+
+**Open question for the owner: two-ink gradients.** MuPDF does not follow the
+PDF standard here, as this tool reads it. MuPDF blends between CMYK values
+along a gradient. The standard, and how two inks overprint on press, blend the
+inks' tints and convert each point through the inks' definition. For the
+285 -> 283 gradient the midpoint differs by up to about 9% cyan (this tool:
+about C56 M31; MuPDF's preview: about C65 M32). The conversion follows the
+standard. There is no independent renderer on this machine to confirm it, so
+it is worth checking once in Acrobat's Output Preview on the original
+catalogue's page 4 gradient.
+
+Because of that, converted gradients are verified on their own: at 101 points
+each must equal the inks' definition applied to the original gradient's tints.
+The page render comparison then checks everything else, against a reference
+copy whose gradients carry this tool's conversion.
+
+Also noted: the earlier page 4 result passed the render comparison only
+because the gradient is a small part of the page, within the tolerance. That
+check now no longer depends on MuPDF's gradient shortcut.
 
 ## The app: milestone 1, Inspect (added 2026-11-18)
 

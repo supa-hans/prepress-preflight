@@ -25,6 +25,9 @@ are no longer used anywhere.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 import zlib
 from collections import defaultdict
 
@@ -36,6 +39,7 @@ from ..checks.base import Options
 from ..content import PROCESS_NAMES, walk_page
 from ..document import Document
 from ..edges import is_non_printing
+from ..functions import Function, FunctionError
 from .append import AppendError, append_update
 from .base import Proposal
 
@@ -46,30 +50,47 @@ CONTAINERS = (pikepdf.Array, pikepdf.Dictionary, pikepdf.Stream)
 # ---- the spot's CMYK definition --------------------------------------------
 
 class Tint:
-    """A Separation's tint transform, when it is a plain CMYK one."""
+    """A Separation's tint transform into CMYK, any PDF function type."""
 
-    def __init__(self, c0, c1, n):
-        self.c0, self.c1, self.n = c0, c1, n
+    def __init__(self, fn: Function):
+        self.fn = fn
+        # A plain linear definition lets gradients be converted exactly.
+        self.linear = fn.kind == 2 and fn.n == 1
+        self.key = (fn.kind, tuple(round(self.cmyk(t / 8)[i], 4) for t in range(9) for i in range(4)))
 
     def cmyk(self, t: float) -> list[float]:
-        t = min(max(t, 0.0), 1.0)
-        f = t ** self.n if self.n != 1 else t
-        return [a + f * (b - a) for a, b in zip(self.c0, self.c1)]
+        return self.fn([min(max(t, 0.0), 1.0)])[:4]
+
+
+class Mix:
+    """A DeviceN colour space that can be converted: its tint transform into CMYK."""
+
+    def __init__(self, names, fn: Function):
+        self.names, self.fn = names, fn
+
+    def cmyk(self, values) -> list[float]:
+        values = list(values)[: len(self.names)] + [1.0] * max(0, len(self.names) - len(values))
+        return self.fn([min(max(v, 0.0), 1.0) for v in values])[:4]
+
+
+def _alternate_is_cmyk(space) -> str:
+    alt = space[2]
+    alt_name = str(alt[0]) if isinstance(alt, pikepdf.Array) else str(alt)
+    return "" if alt_name == "/DeviceCMYK" else alt_name[1:]
 
 
 def _tint(space) -> tuple[Tint | None, str]:
     """The Tint of a Separation space, or (None, why it cannot be converted)."""
-    alt, fn = space[2], space[3]
-    alt_name = str(alt[0]) if isinstance(alt, pikepdf.Array) else str(alt)
-    if alt_name != "/DeviceCMYK":
-        return None, f"its definition is in {alt_name[1:]}, not CMYK (converting it would need a colour profile)"
-    if isinstance(fn, pikepdf.Stream) or int(fn.get("/FunctionType", -1)) != 2:
-        return None, "its CMYK definition is not a simple one this fix can read"
-    c0 = [float(v) for v in fn.get("/C0", [0, 0, 0, 0])]
-    c1 = [float(v) for v in fn.get("/C1", [1, 1, 1, 1])]
-    if len(c0) != 4 or len(c1) != 4:
-        return None, "its CMYK definition does not have four values"
-    return Tint(c0, c1, float(fn.get("/N", 1))), ""
+    other = _alternate_is_cmyk(space)
+    if other:
+        return None, f"its definition is in {other}, not CMYK (converting it would need a colour profile)"
+    try:
+        fn = Function(space[3])
+        if len(fn([1.0])) < 4:
+            raise FunctionError("too few outputs")
+    except (FunctionError, Exception):
+        return None, "its CMYK definition is not one this fix can read"
+    return Tint(fn), ""
 
 
 def _space_of(obj, resources):
@@ -115,15 +136,51 @@ class Rewriter:
         self.targets = targets
         self.blocked: dict[str, set] = defaultdict(set)
         self.used: set = set()
+        self.created: list = []  # new objects (sampled gradient functions) the write must add
 
     def _target(self, operand, resources):
         name = _spot_name(_space_of(operand, resources))
         return name if name in self.targets else None
 
-    def _check_mixed(self, operand, resources, where):
-        for n in _devicen_names(_space_of(operand, resources)):
-            if n in self.targets:
-                self.blocked[n].add(f"it is mixed with other inks {where}")
+    def mix(self, space, where):
+        """A Mix for a DeviceN space using target spots, or None. A DeviceN that mixes
+        a target with an ink that is not being converted blocks that target."""
+        names = _devicen_names(space)
+        spots = [n for n in names if n in self.targets]
+        if not spots:
+            return None
+        others = [n for n in names if n not in self.targets and n not in PROCESS_NAMES]
+        why = None
+        if others:
+            why = f"it is mixed with other inks {where}"
+        elif _alternate_is_cmyk(space):
+            why = f"it is mixed with other inks {where}, defined in a space that needs a colour profile"
+        else:
+            try:
+                fn = Function(space[3])
+                if len(fn([1.0] * len(names))) < 4:
+                    raise FunctionError("too few outputs")
+            except Exception:
+                why = f"it is mixed with other inks {where}, in a way this fix cannot read"
+        if why:
+            for n in spots:
+                self.blocked[n].add(why)
+            return None
+        self.used.update(spots)
+        return Mix(names, fn)
+
+    def _converter(self, operand, resources, where):
+        """What turns this colour space's values into CMYK, if it is to be converted."""
+        spot = self._target(operand, resources)
+        if spot:
+            self.used.add(spot)
+            tint = self.targets[spot]
+            return lambda values: tint.cmyk(values[0] if values else 1.0)
+        space = _space_of(operand, resources)
+        mix = self.mix(space, where) if space is not None else None
+        if mix:
+            return mix.cmyk
+        return None
 
     def rewrite(self, instructions, resources, where="in the artwork"):
         """New instructions, and whether anything changed."""
@@ -138,25 +195,22 @@ class Rewriter:
             elif op == "Q" and stack:
                 fill, stroke = stack.pop()
             if op in ("cs", "CS"):
-                spot = self._target(ops[0], resources)
-                self._check_mixed(ops[0], resources, where)
+                convert = self._converter(ops[0], resources, where)
                 if op == "cs":
-                    fill = spot
+                    fill = convert
                 else:
-                    stroke = spot
-                if spot:
-                    self.used.add(spot)
-                    # The colour a Separation starts with is a full tint.
-                    values = [_num(v) for v in self.targets[spot].cmyk(1.0)]
+                    stroke = convert
+                if convert:
+                    # A Separation or DeviceN colour starts at full tint in every ink.
+                    values = [_num(v) for v in convert([1.0] * 32)]
                     out += [_ins(op, pikepdf.Name.DeviceCMYK), _ins("sc" if op == "cs" else "SC", *values)]
                     changed = True
                     continue
             elif op in ("sc", "scn", "SC", "SCN"):
-                spot = fill if op in ("sc", "scn") else stroke
-                if spot:
+                convert = fill if op in ("sc", "scn") else stroke
+                if convert:
                     nums = [float(v) for v in ops if not isinstance(v, pikepdf.Name)]
-                    t = nums[0] if nums else 1.0
-                    values = [_num(v) for v in self.targets[spot].cmyk(t)]
+                    values = [_num(v) for v in convert(nums or [1.0])]
                     out.append(_ins("sc" if op in ("sc", "scn") else "SC", *values))
                     changed = True
                     continue
@@ -174,12 +228,38 @@ class Rewriter:
 
 # ---- gradients ---------------------------------------------------------------
 
+SAMPLES = 256  # steps in a converted gradient that has to be sampled
+
+
+def _sampled_function(pdf, fn, to_cmyk, domain):
+    """A sampled (type 0) function: position along the gradient -> CMYK, worked out
+    at SAMPLES steps through the gradient's own function and the inks' definition."""
+    try:
+        parts = [Function(f) for f in fn] if isinstance(fn, pikepdf.Array) else [Function(fn)]
+    except Exception:
+        return None
+    d0, d1 = domain
+    data = bytearray()
+    for i in range(SAMPLES):
+        t = d0 + (d1 - d0) * i / (SAMPLES - 1)
+        tints = [v for part in parts for v in part([t])]
+        for v in to_cmyk(tints):
+            data += int(round(min(max(v, 0.0), 1.0) * 65535)).to_bytes(2, "big")
+    stream = pikepdf.Stream(pdf, bytes(data))
+    stream["/FunctionType"] = 0
+    stream["/Domain"] = [d0, d1]
+    stream["/Range"] = [0, 1, 0, 1, 0, 1, 0, 1]
+    stream["/Size"] = [SAMPLES]
+    stream["/BitsPerSample"] = 16
+    return pdf.make_indirect(stream)
+
+
 def _shading_function(fn, tint: Tint):
-    """The shading's function with the spot's CMYK definition folded in, or None."""
-    if isinstance(fn, pikepdf.Array):
-        return None  # one function per output: not a single-ink gradient
+    """The shading's function with the spot's CMYK definition folded in exactly, or None."""
+    if isinstance(fn, pikepdf.Array) or not tint.linear:
+        return None
     kind = int(fn.get("/FunctionType", -1)) if not isinstance(fn, pikepdf.Stream) else int(fn.stream_dict.get("/FunctionType", -1))
-    if kind == 2 and tint.n == 1:
+    if kind == 2:
         c0 = [float(v) for v in fn.get("/C0", [0])]
         c1 = [float(v) for v in fn.get("/C1", [1])]
         if len(c0) != 1 or len(c1) != 1:
@@ -198,7 +278,7 @@ def _shading_function(fn, tint: Tint):
     return None
 
 
-def _convert_shadings(obj, resources_owner_spaces, rewriter, depth=0):
+def _convert_shadings(obj, resources_owner_spaces, rewriter, depth=0, pdf=None):
     """A copy of a direct object with spot gradients converted, or None if nothing in it changes."""
     if depth > 12:
         return None
@@ -207,23 +287,38 @@ def _convert_shadings(obj, resources_owner_spaces, rewriter, depth=0):
         if isinstance(space, pikepdf.Name):
             space = resources_owner_spaces.get(str(space)) if resources_owner_spaces else None
         spot = _spot_name(space)
-        for n in _devicen_names(space):
-            if n in rewriter.targets:
-                rewriter.blocked[n].add("it is mixed with other inks in a gradient")
-        if spot in rewriter.targets:
-            rewriter.used.add(spot)
-            fn = _shading_function(obj.get("/Function"), rewriter.targets[spot])
-            if fn is None:
-                rewriter.blocked[spot].add("it is used in a gradient this fix cannot convert")
+        mix = rewriter.mix(space, "in a gradient") if _devicen_names(space) else None
+        if spot in rewriter.targets or mix:
+            names = [spot] if spot in rewriter.targets else [n for n in mix.names if n in rewriter.targets]
+            if spot in rewriter.targets:
+                rewriter.used.add(spot)
+            kind = int(obj.ShadingType)
+            fn = obj.get("/Function")
+            new_fn = None
+            if kind in (2, 3) and fn is not None:
+                if spot in rewriter.targets:
+                    new_fn = _shading_function(fn, rewriter.targets[spot])
+                    tint = rewriter.targets[spot]
+                    to_cmyk = lambda tints: tint.cmyk(tints[0])
+                else:
+                    to_cmyk = mix.cmyk
+                if new_fn is None and pdf is not None:
+                    domain = [float(v) for v in obj.get("/Domain", [0, 1])]
+                    new_fn = _sampled_function(pdf, fn, to_cmyk, domain)
+                    if new_fn is not None:
+                        rewriter.created.append(new_fn)
+            if new_fn is None:
+                for n in names:
+                    rewriter.blocked[n].add("it is used in a gradient this fix cannot convert")
                 return None
             new = pikepdf.Dictionary({k: obj[k] for k in obj.keys()})
             new["/ColorSpace"] = pikepdf.Name.DeviceCMYK
-            new["/Function"] = fn
+            new["/Function"] = new_fn
             return new
     if isinstance(obj, pikepdf.Array):
         changed, items = False, []
         for item in obj:
-            new = (_convert_shadings(item, resources_owner_spaces, rewriter, depth + 1)
+            new = (_convert_shadings(item, resources_owner_spaces, rewriter, depth + 1, pdf)
                    if isinstance(item, (pikepdf.Array, pikepdf.Dictionary)) and not item.is_indirect else None)
             changed |= new is not None
             items.append(new if new is not None else item)
@@ -232,7 +327,7 @@ def _convert_shadings(obj, resources_owner_spaces, rewriter, depth=0):
         changed, copy = False, pikepdf.Dictionary({k: obj[k] for k in obj.keys()})
         for k in obj.keys():
             item = obj[k]
-            new = (_convert_shadings(item, resources_owner_spaces, rewriter, depth + 1)
+            new = (_convert_shadings(item, resources_owner_spaces, rewriter, depth + 1, pdf)
                    if isinstance(item, (pikepdf.Array, pikepdf.Dictionary)) and not item.is_indirect else None)
             if new is not None:
                 copy[k] = new
@@ -256,7 +351,7 @@ def _targets(pdf, wanted):
             continue
         if name in refused:
             continue
-        if len({(tuple(t.c0), tuple(t.c1), t.n) for t in tints}) > 1:
+        if len({t.key for t in tints}) > 1:
             refused[name] = "it is defined more than one way"
             continue
         targets[name] = tints[0]
@@ -337,13 +432,13 @@ def _plan(pdf, targets):
         if isinstance(obj, (pikepdf.Dictionary, pikepdf.Array)) or isinstance(obj, pikepdf.Stream):
             target = obj.stream_dict if isinstance(obj, pikepdf.Stream) else obj
             if isinstance(target, pikepdf.Array):
-                new = _convert_shadings(target, None, rw)
+                new = _convert_shadings(target, None, rw, pdf=pdf)
             else:
                 spaces = None
                 res = target.get("/Resources") if isinstance(target, pikepdf.Dictionary) else None
                 if isinstance(res, pikepdf.Dictionary) and isinstance(res.get("/ColorSpace"), pikepdf.Dictionary):
                     spaces = res.ColorSpace
-                new = _convert_shadings(target, spaces, rw)
+                new = _convert_shadings(target, spaces, rw, pdf=pdf)
             if new is not None:
                 shadings[obj.objgen] = new
     return rw, pages, forms, patterns, shadings
@@ -379,7 +474,7 @@ def propose_spot_to_cmyk(path: str, options: Options | None = None, spots=None, 
                 proposal.skipped.append((page, f'"{name}" because {why}'))
         if not targets:
             return proposal
-        rw, *_rest = _plan(pdf, targets)
+        rw, _pages, _forms, _patterns, shadings = _plan(pdf, targets)
         for name, reasons in sorted(rw.blocked.items()):
             for page in where(name):
                 proposal.skipped.append((page, f'"{name}" because ' + "; ".join(sorted(reasons))))
@@ -391,8 +486,66 @@ def propose_spot_to_cmyk(path: str, options: Options | None = None, spots=None, 
         text = f'Converts "{name}" to CMYK: 100% becomes C{c:.0f} M{m:.0f} Y{y:.0f} K{k:.0f}, tints in proportion.'
         for page in where(name):
             proposal.reasons.append((page, text))
-    proposal.plan = {0: {"spots": sorted(convert), "pages": sorted({p for n in convert for p in uses.get(n, ())})}}
+    proposal.plan = {0: {"spots": sorted(convert), "pages": sorted({p for n in convert for p in uses.get(n, ())}),
+                         "gradients": bool(shadings)}}
     return proposal
+
+
+def _reference(src: str, folder: str, spots) -> str:
+    """A private copy of the original for the render comparison, with its spot
+    gradients already in CMYK, worked out the same way as the conversion.
+
+    MuPDF does not follow the PDF standard for gradients in spot inks: it blends
+    between CMYK values along the gradient, where the standard blends the inks'
+    tints and converts each point through the inks' definition. For two-ink
+    gradients the two differ by up to about 9% at the midpoint. So the render
+    comparison is left to check everything else on the page, and the gradients
+    are checked on their own (`_check_gradients`), against the standard.
+    """
+    out = os.path.join(folder, "reference.pdf")
+    with pikepdf.open(src) as pdf:
+        targets, _ = _targets(pdf, set(spots))
+        targets = {n: t for n, t in targets.items() if n in spots}
+        rw, _pages, _forms, _patterns, shadings = _plan(pdf, targets)
+        for objgen, new in shadings.items():
+            old = pdf.get_object(objgen)
+            target = old.stream_dict if isinstance(old, pikepdf.Stream) else old
+            for key in ("/ColorSpace", "/Function"):
+                if key in new:
+                    target[key] = new[key]
+        pdf.save(out)
+    return out
+
+
+def _check_gradients(src: str, new_path: str, spots) -> None:
+    """Each converted gradient equals the inks' definition applied to the original
+    gradient's tints, at 101 points along it."""
+    with pikepdf.open(src) as before, pikepdf.open(new_path) as after:
+        targets, _ = _targets(before, set(spots))
+        targets = {n: t for n, t in targets.items() if n in spots}
+        rw = Rewriter(targets)
+        for obj in before.objects:
+            if not isinstance(obj, pikepdf.Dictionary) or "/ShadingType" not in obj or "/Function" not in obj:
+                continue
+            space = obj.ColorSpace
+            spot = _spot_name(space)
+            mix = rw.mix(space, "in a gradient") if _devicen_names(space) else None
+            if spot not in targets and not mix:
+                continue
+            new = after.get_object(obj.objgen)
+            if str(new.get("/ColorSpace")) != "/DeviceCMYK":
+                raise AppendError("verification failed: a spot gradient was not converted")
+            fn = obj.Function
+            parts = [Function(f) for f in fn] if isinstance(fn, pikepdf.Array) else [Function(fn)]
+            convert = (lambda tints: targets[spot].cmyk(tints[0])) if spot in targets else mix.cmyk
+            converted = Function(new.Function)
+            d0, d1 = (float(v) for v in obj.get("/Domain", [0, 1]))
+            for i in range(101):
+                t = d0 + (d1 - d0) * i / 100
+                want = convert([v for part in parts for v in part([t])])
+                got = converted([t])
+                if max(abs(a - b) for a, b in zip(want, got)) > 0.005:
+                    raise AppendError("verification failed: a converted gradient does not match its inks' definition")
 
 
 def _check(src, plan):
@@ -406,7 +559,13 @@ def _check(src, plan):
                         raise AppendError(f'verification failed: "{left[0]}" is still used on page {page.number}')
         finally:
             doc.close()
-        a, b = pymupdf.open(src), pymupdf.open(new_path)
+        folder = tempfile.mkdtemp(prefix="preflight-check-")
+        if plan.get("gradients"):
+            _check_gradients(src, new_path, plan["spots"])
+            reference = _reference(src, folder, plan["spots"])
+        else:
+            reference = src
+        a, b = pymupdf.open(reference), pymupdf.open(new_path)
         try:
             for number in plan["pages"]:
                 pa, pb = a.load_page(number - 1), b.load_page(number - 1)
@@ -422,6 +581,7 @@ def _check(src, plan):
         finally:
             a.close()
             b.close()
+            shutil.rmtree(folder, ignore_errors=True)
     return check
 
 
@@ -437,6 +597,8 @@ def write_spot_to_cmyk(proposal: Proposal, dst: str) -> None:
         if any(n in rw.blocked for n in targets):
             raise AppendError("the file changed between the proposal and the write")
         changes, additions = {}, {}
+        for obj in rw.created:
+            additions[obj.objgen] = obj
         for number, instructions in pages.items():
             obj = pdf.pages[number - 1].obj
             stream = pdf.make_indirect(_flate(pdf, pikepdf.unparse_content_stream(instructions)))

@@ -146,3 +146,72 @@ def test_verification_refuses_a_wrong_conversion(make, tmp_path, monkeypatch):
     with pytest.raises(AppendError, match="looks different"):
         write(p, str(dst))
     assert not dst.exists()
+
+
+def test_two_ink_colour_is_converted_when_both_inks_are(make, tmp_path):
+    from prepress_preflight.functions import Function
+    from test_functions import INDESIGN
+    path = make(b"/CS0 cs 0.5 0.25 scn 100 100 20 20 re f", colorspace={
+        "/CS0": pikepdf.Array([pikepdf.Name.DeviceN, [pikepdf.Name("/PANTONE 285 C"), pikepdf.Name("/PANTONE 283 C")],
+                               pikepdf.Name.DeviceCMYK,
+                               pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 0, 0, 0], N=1)])})
+    # the space above has a dummy definition; give the file real single-ink definitions too, so both inks are targets
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        tint = pdf.make_stream(INDESIGN, FunctionType=4, Domain=[0, 1, 0, 1], Range=[0, 1] * 4)
+        pdf.pages[0].Resources.ColorSpace.CS0[3] = tint
+        pdf.pages[0].Resources.ColorSpace["/CS1"] = spot("PANTONE 285 C", (0.913451, 0.526726, 0, 0))
+        pdf.pages[0].Resources.ColorSpace["/CS2"] = spot("PANTONE 283 C", (0.401221, 0.138613, 0, 0))
+        pdf.save(path)
+    p = propose(path)
+    assert set(p.plan[0]["spots"]) == {"PANTONE 285 C", "PANTONE 283 C"}
+    dst = str(tmp_path / "cmyk.pdf")
+    write(p, dst)  # verified to look the same
+    kind, names, colour, *_ = colours(dst)[0]
+    holder = pikepdf.new()  # kept alive while the function is read
+    expected = Function(holder.make_stream(INDESIGN, FunctionType=4, Domain=[0, 1, 0, 1], Range=[0, 1] * 4))([0.5, 0.25])
+    assert kind == "cmyk" and colour == pytest.approx(expected, abs=1e-4)
+
+
+def test_two_ink_gradient_becomes_a_sampled_cmyk_gradient(make, tmp_path):
+    from test_functions import INDESIGN
+    path = make(b"q 100 100 100 50 re W n /Sh0 sh Q")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        tint = pdf.make_stream(INDESIGN, FunctionType=4, Domain=[0, 1, 0, 1], Range=[0, 1] * 4)
+        space = pikepdf.Array([pikepdf.Name.DeviceN, [pikepdf.Name("/PANTONE 285 C"), pikepdf.Name("/PANTONE 283 C")],
+                               pikepdf.Name.DeviceCMYK, tint])
+        fn = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[1, 0], C1=[0, 1], N=1)  # 285 -> 283
+        shading = pikepdf.Dictionary(ShadingType=2, ColorSpace=space, Coords=[100, 0, 200, 0], Function=fn)
+        res = pdf.pages[0].Resources
+        res["/Shading"] = pikepdf.Dictionary(Sh0=pdf.make_indirect(shading))
+        res["/ColorSpace"] = pikepdf.Dictionary(CS1=spot("PANTONE 285 C", (0.913451, 0.526726, 0, 0)),
+                                                CS2=spot("PANTONE 283 C", (0.401221, 0.138613, 0, 0)))
+        pdf.save(path)
+    p = propose(path)
+    assert set(p.plan[0]["spots"]) == {"PANTONE 285 C", "PANTONE 283 C"}
+    dst = str(tmp_path / "cmyk.pdf")
+    write(p, dst)  # verified to render the same
+    with pikepdf.open(dst) as pdf:
+        sh = pdf.pages[0].Resources.Shading.Sh0
+        assert str(sh.ColorSpace) == "/DeviceCMYK"
+        assert int(sh.Function.FunctionType) == 0 and int(sh.Function.Size[0]) == 256
+
+
+def test_a_wrong_gradient_conversion_is_refused(make, tmp_path, monkeypatch):
+    import prepress_preflight.fixes.spot_to_cmyk as sc
+    from prepress_preflight.fixes.append import AppendError
+    path = make(b"q 100 100 100 50 re W n /Sh0 sh Q")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        fn = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0], C1=[1], N=1)
+        curved = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 0.9, 0.8, 0], N=2)
+        space = pikepdf.Array([pikepdf.Name.Separation, pikepdf.Name("/PANTONE 185 C"), pikepdf.Name.DeviceCMYK, curved])
+        # a curved ink definition: the gradient has to be sampled
+        shading = pikepdf.Dictionary(ShadingType=2, ColorSpace=space, Coords=[100, 0, 200, 0], Function=fn)
+        pdf.pages[0].Resources["/Shading"] = pikepdf.Dictionary(Sh0=pdf.make_indirect(shading))
+        pdf.save(path)
+    p = propose(path)
+    real = sc._sampled_function
+    monkeypatch.setattr(sc, "_sampled_function", lambda pdf, fn, to_cmyk, domain: real(pdf, fn, lambda t: [1, 0, 0, 0], domain))
+    dst = tmp_path / "cmyk.pdf"
+    with pytest.raises(AppendError, match="gradient"):
+        write(p, str(dst))
+    assert not dst.exists()
