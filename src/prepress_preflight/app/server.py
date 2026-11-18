@@ -42,6 +42,7 @@ from ..fix_cli import _settings
 from ..fixes import FIXES
 from ..fixes.chain import deliver, run_chain
 from ..model import FAIL, UNCHECKED, WARN
+from ..plates import ink_coverage, page_inks, render_plate
 
 STATIC = Path(__file__).parent / "static"
 MAX_PIXELS = 16_000_000  # the largest page render the app will make
@@ -265,6 +266,38 @@ class Session:
     def close(self):
         shutil.rmtree(self.workdir, ignore_errors=True)
 
+    def _file(self, which: str) -> str:
+        path = {"after": self.preview_path, "base": self.base_path}.get(which, self.path)
+        if path is None:
+            raise ValueError("No file is open" if which != "after" else "There is no preview")
+        return path
+
+    def inks(self, number: int, which: str = "before") -> list[dict]:
+        """The inks of one page, with how much of it each covers."""
+        path = self._file(which)
+        with RENDER_LOCK, pymupdf.open(path) as doc:
+            if not 1 <= number <= doc.page_count:
+                raise ValueError("No such page")
+            page = doc.load_page(number - 1)
+            coverage = ink_coverage(page)
+            return [{"name": i.name, "process": i.process, "printing": i.printing,
+                     "coverage": coverage.get(i.name, 0.0)} for i in page_inks(page)]
+
+    def render_plate(self, number: int, width: int, ink: str, which: str = "before") -> bytes:
+        path = self._file(which)
+        key = (path, number, width, "plate", ink)
+        if key in self._renders:
+            return self._renders[key]
+        with RENDER_LOCK, pymupdf.open(path) as doc:
+            if not 1 <= number <= doc.page_count:
+                raise ValueError("No such page")
+            page = doc.load_page(number - 1)
+            png = render_plate(page, ink, width / page.rect.width)
+        if len(self._renders) > 64:
+            self._renders.clear()
+        self._renders[key] = png
+        return png
+
     def render(self, number: int, width: int, which: str = "before") -> bytes:
         """PNG of a page, `width` pixels wide (capped), cached. `which` is
         "before" (the file as it is), "base" (after the review queue) or
@@ -441,7 +474,14 @@ def make_handler(session: Session, key: str, port_ref: dict):
                     number = int((query.get("n") or ["1"])[0])
                     width = max(64, min(4000, int((query.get("w") or ["800"])[0])))
                     which = (query.get("which") or ["before"])[0]
+                    plate = (query.get("plate") or [""])[0]
+                    if plate:
+                        return self._send(HTTPStatus.OK, session.render_plate(number, width, plate, which), "image/png")
                     return self._send(HTTPStatus.OK, session.render(number, width, which), "image/png")
+                if url.path == "/api/inks":
+                    number = int((query.get("n") or ["1"])[0])
+                    which = (query.get("which") or ["before"])[0]
+                    return self._json(HTTPStatus.OK, {"inks": session.inks(number, which)})
                 if url.path == "/api/fixes":
                     return self._json(HTTPStatus.OK, {"fixes": sorted(FIXES)})
                 return self._send(HTTPStatus.NOT_FOUND, b"Not found", "text/plain")

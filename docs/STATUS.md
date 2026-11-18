@@ -591,9 +591,30 @@ Bugs found while trying it, both fixed:
   function that takes it again. The lock is now re-entrant, and the rebuild no
   longer takes it twice.
 
-The four states from the interface model are now all in place. Next for the
-app: polish (drag and drop, recent files, a separation viewer, a Mac app
-wrapper).
+The four states from the interface model are now all in place. The owner finds
+the screens "a little messy"; refining them is deferred (2026-11-18).
+
+## Separations (added 2026-11-18)
+
+`plates.py` renders each printing plate on its own through MuPDF's separations
+interface, reached via PyMuPDF's low-level `mupdf` module, which PyMuPDF's
+normal API does not expose. Pages render to the four process plates plus one
+channel per spot ink, with colour management off. Overprint is honoured, but
+only on that path: a page with no spots still goes through it with an empty
+separations list, because otherwise MuPDF knocks out (black overprinting cyan
+lost the cyan in testing).
+
+In the app, the Plate picker in the toolbar lists the page's inks with the
+share of the page each covers, marks spots and non-printing inks, and shows
+any one plate, ink dark on white, for the original, a preview or the review
+result.
+
+On catalogue page 48 the Silver plate shows the white-overprint fault as it
+would print: the silver bars run solid where the white words should be
+knocked out.
+
+Next for the app: drag and drop, recent files, a Mac app wrapper, and tidying
+the screens.
 
 ## Next tasks, in order
 

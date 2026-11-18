@@ -300,3 +300,15 @@ def test_keep_needs_a_preview_that_changes_something(app, make):
     wait_report(base)
     with pytest.raises(urllib.error.HTTPError):
         post(base, "/api/keep", {})
+
+
+def test_inks_and_plate_renders(app, make):
+    from test_spots import spot
+    base = app(make(b"/CS0 cs 1 scn 100 100 50 50 re f", colorspace={"/CS0": spot("PANTONE 185 C")}))
+    wait_report(base)
+    inks = json.loads(get(base, "/api/inks?n=1")[2])["inks"]
+    assert [i["name"] for i in inks][-1] == "PANTONE 185 C" and inks[-1]["coverage"] > 0
+    status, kind, body = get(base, "/api/page?n=1&w=300&plate=PANTONE%20185%20C")
+    assert kind == "image/png" and body[:4] == b"\x89PNG"
+    with pytest.raises(urllib.error.HTTPError):
+        get(base, "/api/page?n=1&w=300&plate=Nope")

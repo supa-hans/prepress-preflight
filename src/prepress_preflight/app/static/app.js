@@ -6,7 +6,7 @@
   const LABEL = { fail: "Fail", unchecked: "Could not check", warn: "Warn", note: "Note" };
   const state = { report: null, page: 1, zoom: null, selected: null, path: null, mode: "inspect", which: "before",
                   preview: null, previewBusy: false, queue: [], queueReport: null, queueEffect: null,
-                  exported: null };
+                  exported: null, plate: "", inksFor: null };
 
   // What each fix asks for. Field values become the same options the command line takes.
   const FIXES = {
@@ -37,10 +37,10 @@
     return body;
   }
 
-  function pageImage(n, width, which = "before") {
-    let tag = "";
-    if (which === "after" && state.preview) tag = `&which=after&v=${encodeURIComponent(state.preview.fix + state.preview.options.join(" "))}`;
-    if (which === "base") tag = `&which=base&v=${state.queue.length}-${encodeURIComponent(state.queue.map((q) => q.fix).join("+"))}`;
+  function pageImage(n, width, which = "before", plate = "") {
+    let tag = plate ? `&plate=${encodeURIComponent(plate)}` : "";
+    if (which === "after" && state.preview) tag += `&which=after&v=${encodeURIComponent(state.preview.fix + state.preview.options.join(" "))}`;
+    if (which === "base") tag += `&which=base&v=${state.queue.length}-${encodeURIComponent(state.queue.map((q) => q.fix).join("+"))}`;
     return `/api/page?n=${n}&w=${Math.round(width)}${tag}&key=${encodeURIComponent(KEY)}`;
   }
 
@@ -244,7 +244,8 @@
     const w = g.width * zoom, h = g.height * zoom;
     const img = $("page-img");
     const want = Math.min(4000, Math.ceil((w * (window.devicePixelRatio || 1)) / 200) * 200);
-    const src = pageImage(state.page, want, view()[0]);
+    const src = pageImage(state.page, want, view()[0], state.plate);
+    loadInks();
     if (img.dataset.src !== src) {
       img.dataset.src = src;
       img.onload = () => { if (!state.mainLoaded) loadThumbs(); };
@@ -284,6 +285,34 @@
       for (const l of f.locations) if (l.page === state.page && l.view) rect(l.view, "hit", css.getPropertyValue("--hit"), "", 2, 4 / zoom);
     }
   }
+
+  // ---- plates ---------------------------------------------------------------
+
+  async function loadInks() {
+    const which = view()[0];
+    const key = `${state.path}|${which}|${state.page}|${state.queue.length}|${state.preview ? state.preview.fix + state.preview.options.join(" ") : ""}`;
+    if (state.inksFor === key) return;
+    state.inksFor = key;
+    let inks = [];
+    try { inks = (await api(`/api/inks?n=${state.page}&which=${which}`)).inks; } catch (e) { inks = []; }
+    if (state.inksFor !== key) return;
+    const select = $("plate");
+    select.textContent = "";
+    const all = document.createElement("option");
+    all.value = ""; all.textContent = "All inks";
+    select.append(all);
+    for (const ink of inks) {
+      const o = document.createElement("option");
+      o.value = ink.name;
+      const tags = [ink.process ? "" : "spot", ink.printing ? "" : "non-printing"].filter(Boolean).join(", ");
+      o.textContent = `${ink.name}${tags ? ` (${tags})` : ""}: ${ink.coverage}%`;
+      select.append(o);
+    }
+    if (state.plate && !inks.some((i) => i.name === state.plate)) state.plate = "";
+    select.value = state.plate;
+  }
+
+  $("plate").onchange = () => { state.plate = $("plate").value; renderPage(); };
 
   // ---- propose --------------------------------------------------------------
 
