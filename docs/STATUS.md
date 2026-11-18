@@ -393,6 +393,38 @@ On the samples, only files without marks get them: place cards, A4 PBR,
 Oliver Hume, the yearbook, Little Stars and the X-am posters. The eight files
 with marks are left as they are.
 
+## Fifth fix: scale (added 2026-11-18)
+
+`preflight fix scale file.pdf --trim WxH [--fill | --fit]`. Scales the whole
+page about the centre of its trim: the artwork (wrapped in a scaling
+instruction, not edited), every page box, and link and annotation positions.
+
+- Within 1% of the job's shape it scales to the exact size and reports the
+  small distortion per axis. Further out it is refused unless `--fill` (cover
+  the trim and crop the overflow, reported in mm per side) or `--fit` (fit
+  inside, white margins reported) is chosen. It never distorts more than 1% on
+  its own.
+- The bleed box becomes the new trim plus the original bleed, scaled.
+- With `--fill` or `--fit`, scaled crop marks would mark the old shape, so they
+  are removed and new ones drawn for the new trim. If they are inside a placed
+  graphic, the page is left alone with the reason. The LC business card at
+  85 x 55 is the example: its marks are in a placed graphic.
+- Verified by rendering the original at the matching scale and comparing it
+  with the new trim area, allowing only for resampling differences.
+
+Pull-up banners for the owner's usual supplier are 845 x 2100 mm trim (owner,
+2026-11-18), so the banner sample was not supplied at the wrong size.
+
+Bug found while building it, now fixed everywhere: PyMuPDF's page matrix
+ignores the page origin on rotated pages, and its rotation step uses the
+unscaled size on UserUnit pages. Every check and fix that maps page positions
+to rendered pixels used it. Pages made by add-bleed have a non-zero origin, so
+a rotated page run through add-bleed would have been mis-measured afterwards.
+None of the 14 samples is rotated, so no result changed. `device_matrix` in
+document.py now builds the mapping from the crop box, and
+`tests/test_device_matrix.py` checks all 16 combinations of rotation, crop box
+and UserUnit.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
@@ -406,8 +438,7 @@ with marks are left as they are.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.
 5. Later checks: none outstanding from the original list.
-6. Later phases: adding trim marks and scaling (both change artwork, so
-   propose first); a fix for the banner's Multiply fault (parked by the owner); spot colour
+6. Later phases: a fix for the banner's Multiply fault (parked by the owner); spot colour
    tools; action lists; desktop interface; object tree and editing.
 
 ## Interface model (for later)

@@ -36,7 +36,7 @@ def size_text(box) -> str:
 
 
 def rounded(box) -> list:
-    return [round(float(v), 3) for v in box]
+    return [round(float(v), 3) + 0.0 for v in box]  # + 0.0 turns -0.0 into 0.0
 
 
 def box_change(proposal, page_number, page_dict, key, new) -> None:

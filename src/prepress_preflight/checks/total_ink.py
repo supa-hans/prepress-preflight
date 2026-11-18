@@ -6,6 +6,7 @@ import pymupdf
 from ..edges import printing_page
 from ..model import FAIL, NOTE, UNCHECKED
 from .base import Check
+from ..document import device_matrix
 
 MAX_PIXELS = 4_000_000
 MIN_AREA_MM2 = 1.0  # ignore isolated pixels
@@ -58,7 +59,7 @@ class TotalInkCheck(Check):
                     self.objects.append((page.number, pct))
         try:
             mu_page, _ = printing_page(self.doc, page, content)
-            to_mu = mu_page.transformation_matrix * mu_page.rotation_matrix
+            to_mu = device_matrix(mu_page)
             clip = (pymupdf.Rect(page.trim.as_list()) * to_mu).normalize()
             area_in2 = max((clip.width / 72.0) * (clip.height / 72.0), 1e-6)
             dpi = int(min(72, max(18, (MAX_PIXELS / area_in2) ** 0.5)))

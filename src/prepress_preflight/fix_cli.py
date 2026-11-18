@@ -38,6 +38,7 @@ def _preview(proposal, options, write) -> tuple:
 
 
 HEADERS = {
+    "scale": "Proposed changes (the artwork is scaled as a whole, not edited; page boxes and link positions scale with it):",
     "add-bleed": "Proposed changes (the original artwork inside the trim is not changed; bleed is added beneath it, "
                  "outside the trim, and any clip or trim marks asked for):",
     "add-marks": "Proposed changes (the artwork is not changed; trim marks are added outside the bleed box, "
@@ -102,7 +103,12 @@ def main(argv) -> int:
     parser.add_argument("file", help="the PDF to fix; it is never modified")
     parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
-    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes: the job's trim size in mm, e.g. 850x2000")
+    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes, scale: the job's trim size in mm, e.g. 845x2100")
+    shape = parser.add_mutually_exclusive_group()
+    shape.add_argument("--fill", action="store_const", const="fill", dest="mode",
+                       help="scale: when the shape differs by more than 1%%, scale to cover the trim and crop the overflow")
+    shape.add_argument("--fit", action="store_const", const="fit", dest="mode",
+                       help="scale: when the shape differs by more than 1%%, scale to fit inside the trim")
     parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="bleed to give the new bleed box (default 3)")
     parser.add_argument("--method", choices=("mirror", "stretch"), default="mirror",
                         help="add-bleed: reflect the edge outward (default), or repeat its last row of pixels")
@@ -117,7 +123,8 @@ def main(argv) -> int:
     options = Options(min_bleed_mm=args.min_bleed, expected_trim_mm=args.trim, bound=args.bound)
     propose, write = FIXES[args.name]
     try:
-        proposal = propose(args.file, options, method=args.method, clip=args.clip_to_bleed, marks=args.marks)
+        proposal = propose(args.file, options, method=args.method, clip=args.clip_to_bleed, marks=args.marks,
+                           mode=args.mode)
     except Exception as exc:
         print(f"preflight fix: could not read {args.file}: {exc}", file=sys.stderr)
         return 2

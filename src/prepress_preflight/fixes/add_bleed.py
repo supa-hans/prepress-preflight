@@ -34,6 +34,7 @@ from ..marks import _lines, implied_trim
 from ..model import Box, mm
 from .append import AppendError, append_update
 from .base import Proposal, box_change, size_text
+from ..document import device_matrix
 
 NAME = "add-bleed"
 PT_PER_MM = 72 / 25.4
@@ -255,7 +256,7 @@ def propose_add_bleed(path: str, options: Options | None = None, method: str = "
 def _render(mu_page, rect_user, colour, dpi):
     """Render a rectangle of the page. Returns pixels (rows top to bottom) and
     the device rectangle they cover, in points."""
-    to_dev = mu_page.transformation_matrix * mu_page.rotation_matrix
+    to_dev = device_matrix(mu_page)
     clip = (pymupdf.Rect(rect_user) * to_dev).normalize()
     cs = pymupdf.csCMYK if colour == "cmyk" else pymupdf.csRGB
     pix = mu_page.get_pixmap(colorspace=cs, dpi=dpi, clip=clip, alpha=False, annots=False)
@@ -433,7 +434,7 @@ def _check_trim_unchanged(src, plans):
                     cs = pymupdf.csCMYK if colour == "cmyk" else pymupdf.csRGB
                     pa, pb = before.load_page(number - 1), after.load_page(number - 1)
                     # Only the trim: on a page that had room, the new bleed lies on the page.
-                    clip = (pymupdf.Rect(plan["trim"]) * (pa.transformation_matrix * pa.rotation_matrix)).normalize()
+                    clip = (pymupdf.Rect(plan["trim"]) * device_matrix(pa)).normalize()
                     a = pa.get_pixmap(colorspace=cs, dpi=dpi, clip=clip, alpha=False, annots=False)
                     b = pb.get_pixmap(colorspace=cs, dpi=dpi, clip=clip, alpha=False, annots=False)
                     if (a.width, a.height) != (b.width, b.height):
@@ -488,7 +489,7 @@ def _check_clip(new_path, plans):
             if plan.get("post_xref"):
                 doc.update_stream(plan["post_xref"], b"Q\n")
             page = doc.load_page(number - 1)
-            to_dev = page.transformation_matrix * page.rotation_matrix
+            to_dev = device_matrix(page)
             w, h = page.rect.width / 72, page.rect.height / 72
             dpi = int(max(18, min(72, (4_000_000 / max(w * h, 1e-6)) ** 0.5)))
             pix = page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, alpha=False, annots=False)

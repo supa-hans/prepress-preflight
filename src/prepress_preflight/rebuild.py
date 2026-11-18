@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 import pymupdf
+from .document import device_matrix
 
 NORMAL_GS = "PreflightNormal"
 FORM_NAME = "PreflightForm"
@@ -110,7 +111,7 @@ class PageRebuild:
             doc.xref_set_key(holder, "DecodeParms", "null")
             doc.update_stream(holder, data, compress=False)
         mu_page = doc.load_page(self.pno)  # loaded fresh each time; no page object is kept
-        to_mu = mu_page.transformation_matrix * mu_page.rotation_matrix
+        to_mu = device_matrix(mu_page)
         clip = (pymupdf.Rect(clip_pdf) * to_mu).normalize()
         pix = mu_page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, clip=clip, alpha=False, annots=False)
         if pix.n != 4:

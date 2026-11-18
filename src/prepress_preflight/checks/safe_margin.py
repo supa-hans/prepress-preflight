@@ -5,6 +5,7 @@ import pymupdf
 from ..edges import EDGES, printing_page, scan_margin, spine_edge
 from ..model import MM_PER_PT, UNCHECKED, WARN
 from .base import Check
+from ..document import device_matrix
 
 DISPLAY_MM = 25.0  # type this large that runs off the page is treated as artwork
 
@@ -46,7 +47,7 @@ class SafeMarginCheck(Check):
         skip = spine_edge(page.number) if self.options.bound else None
         try:
             mu_page, _ = printing_page(self.doc, page, content)
-            to_mu = mu_page.transformation_matrix * mu_page.rotation_matrix
+            to_mu = device_matrix(mu_page)
             trim = (pymupdf.Rect(page.trim.as_list()) * to_mu).normalize()
             # Which side of the rendered page each edge of the trim ends up on.
             sides = {}

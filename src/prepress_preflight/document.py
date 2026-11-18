@@ -64,6 +64,29 @@ class PageInfo:
                    max(self.trim.x1, self.bleed.x1), max(self.trim.y1, self.bleed.y1))
 
 
+def device_matrix(mu_page) -> pymupdf.Matrix:
+    """The matrix from PDF page coordinates to the rendered page (points, top-left
+    origin, after /Rotate).
+
+    PyMuPDF's own page.transformation_matrix leaves out the page's origin on
+    rotated pages whose crop box does not start at 0,0 (seen with PyMuPDF 1.26),
+    so this builds the mapping from the crop box itself. PyMuPDF reports the crop
+    box with its y measured down from the top of the media box, which is undone
+    here.
+    """
+    mb, cb = mu_page.mediabox, mu_page.cropbox
+    x0, y1 = cb.x0, mb.y1 - cb.y0  # the crop box's top-left corner, in PDF coordinates
+    # A UserUnit scales the whole page; PyMuPDF renders it at that size.
+    rot = mu_page.rotation % 360
+    across = cb.width if rot in (0, 180) else cb.height
+    u = mu_page.rect.width / across if across else 1.0
+    w, h = cb.width * u, cb.height * u  # the unrotated page, as rendered
+    # PyMuPDF's rotation_matrix uses the unscaled size, so the turn is built here.
+    turn = {0: pymupdf.Matrix(1, 0, 0, 1, 0, 0), 90: pymupdf.Matrix(0, 1, -1, 0, h, 0),
+            180: pymupdf.Matrix(-1, 0, 0, -1, w, h), 270: pymupdf.Matrix(0, -1, 1, 0, 0, w)}[rot]
+    return pymupdf.Matrix(u, 0, 0, -u, -x0 * u, y1 * u) * turn
+
+
 class Document:
     def __init__(self, path: str):
         self.path = path

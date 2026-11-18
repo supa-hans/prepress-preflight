@@ -21,6 +21,7 @@ import pymupdf
 
 from .content import PROCESS_NAMES
 from .rebuild import PageRebuild
+from .document import device_matrix
 
 INSIDE_MM = 0.5  # ink this close to the trim counts as reaching it
 INK_FLOOR = 12  # of 255; at the trim, a tint under 5% in every ink counts as white
@@ -194,7 +195,7 @@ def _strip(mu_page, page, name, inside_mm, outside_mm):
         box, out, line, room = [t.x0, t.y1 - inside, t.x1, min(t.y1 + need, m.y1)], (0, 1), (t.x0, t.y1), m.y1 - t.y1
     along_pt = (t.y1 - t.y0) if out[1] == 0 else (t.x1 - t.x0)
     dpi = int(max(36, min(MAX_DPI, MAX_ALONG_PX / max(along_pt * page.unit / 72.0, 1e-6))))
-    to_mu = mu_page.transformation_matrix * mu_page.rotation_matrix
+    to_mu = device_matrix(mu_page)
     clip = (pymupdf.Rect(box) * to_mu).normalize()
     pix = mu_page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, clip=clip, alpha=False, annots=False)
     if pix.n != 4:
