@@ -56,5 +56,8 @@ def add_step_options(parser) -> None:
     parser.add_argument("--profile", metavar="NAME|PATH",
                         help="rgb-to-cmyk: the CMYK profile to convert to: fogra39 (default), gracol2006, swop, "
                              "or the path to an .icc file")
+    parser.add_argument("--near-black-to-k", action="store_true",
+                        help="rgb-to-cmyk: near-black text and vectors (neutral, no channel above 10%%) become K100 "
+                             "too; by default only pure black does")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")

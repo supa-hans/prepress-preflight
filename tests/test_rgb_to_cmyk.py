@@ -191,3 +191,21 @@ def test_profiles(make, tmp_path):
 def test_nothing_to_do(make):
     p = propose(make(b"0 0 0 1 k 100 100 50 50 re f"))
     assert p.empty and p.skipped == [(1, "there is no RGB colour to convert")]
+
+
+def test_near_black_follows_the_profile_unless_asked(make, tmp_path):
+    content = (b"0.02 0.02 0.02 rg 100 100 20 20 re f "  # near-black, neutral
+               b"0.02 0.02 0.09 rg 130 100 20 20 re f "  # a navy-black: not neutral, never K100
+               b"0.3 0.3 0.3 rg 160 100 20 20 re f")  # a dark grey: not near-black
+    src = make(content)
+    p = propose(src)
+    assert any("1 near-black RGB text or vector object(s)" in r and "--near-black-to-k" in r for _, r in p.reasons)
+    plain = str(tmp_path / "plain.pdf")
+    write(p, plain)
+    assert tuple(round(v, 3) for v in events(plain)[0].colour) == cmyk_of((0.02, 0.02, 0.02))
+    asked = propose(src, near_black=True)
+    assert any("also become K100 only, as asked" in r for _, r in asked.reasons)
+    out = str(tmp_path / "asked.pdf")
+    write(asked, out)
+    got = [tuple(round(v, 3) for v in e.colour) for e in events(out)]
+    assert got == [(0, 0, 0, 1), cmyk_of((0.02, 0.02, 0.09)), cmyk_of((0.3, 0.3, 0.3))]

@@ -891,9 +891,12 @@ channels, no chroma subsampling), and the incremental update keeps the
 original RGB images too. A compacting export (a full rewrite dropping
 superseded objects) would recover much of that; not built yet.
 
-Open question for the owner: near-black. Little Stars has 514 text/vector
-objects in near-black RGB (e.g. 5,5,5) that are not pure black, so they
-become a four-colour black of about 318% ink. The proposal says so.
+Near-black, owner's decision (2026-11-20): an option, generally off.
+`--near-black-to-k` (a checkbox in the app) makes near-black text and vectors
+K100 too. Near-black means neutral (channels within 2% of each other) with no
+channel above 10%, so a navy-black stays coloured. Off, they follow the
+profile, and the proposal counts them and names the option: Little Stars has
+414 (about 318% ink each); 100 more dark colours there are not neutral.
 
 ## Next tasks, in order
 

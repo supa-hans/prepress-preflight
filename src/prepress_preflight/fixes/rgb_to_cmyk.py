@@ -55,7 +55,13 @@ PROFILES = {  # short names for --profile
     "swop": [f"{ADOBE}/Recommended/USWebCoatedSWOP.icc"],
 }
 DEFAULT_PROFILE = "fogra39"
-NEAR_BLACK = 0.1  # RGB colours with no channel above this are reported as near-black
+NEAR_BLACK = 0.1  # near-black: no channel above this...
+NEUTRAL = 0.02  # ...and the channels this close to each other (a navy-black is not near-black)
+
+
+def is_near_black(rgb) -> bool:
+    values = [float(v) for v in list(rgb)[:3]]
+    return len(values) == 3 and any(values) and max(values) <= NEAR_BLACK and max(values) - min(values) <= NEUTRAL
 
 
 def find_profile(name: str | None) -> str:
@@ -104,10 +110,11 @@ class Engine:
                 renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC, flags=ImageCms.Flags.BLACKPOINTCOMPENSATION)
         return self._transforms[k]
 
-    def colour(self, rgb, key="srgb", black_to_k=False) -> tuple:
-        """One colour, values 0..1. With black_to_k, pure black becomes K100 only."""
+    def colour(self, rgb, key="srgb", black_to_k=False, near_black=False) -> tuple:
+        """One colour, values 0..1. With black_to_k, pure black becomes K100 only;
+        with near_black as well, so does near-black (the owner's option, off by default)."""
         values = [min(max(float(v), 0.0), 1.0) for v in list(rgb)[:3]] + [0.0] * (3 - len(rgb[:3]))
-        if black_to_k and all(v <= 1e-6 for v in values):
+        if black_to_k and (all(v <= 1e-6 for v in values) or (near_black and is_near_black(values))):
             return (0.0, 0.0, 0.0, 1.0)
         rgb8 = tuple(int(round(v * 255)) for v in values)
         k = ("srgb" if key == "srgb" else key[1].objgen, rgb8)
@@ -150,8 +157,9 @@ def _ins(op, *operands):
 
 
 class Rewriter:
-    def __init__(self, engine: Engine):
+    def __init__(self, engine: Engine, near_black: bool = False):
         self.engine = engine
+        self.near_black = near_black
         self.left: Counter = Counter()
         self.colours = 0  # colour settings converted
 
@@ -159,7 +167,8 @@ class Rewriter:
         out, changed = [], False
         fill = stroke = None  # the RGB source of the current fill/stroke colour space
         stack = []
-        to_cmyk = lambda values, src: [_num(v) for v in self.engine.colour(values, src, black_to_k=True)]
+        to_cmyk = lambda values, src: [_num(v) for v in self.engine.colour(values, src, black_to_k=True,
+                                                                             near_black=self.near_black)]
         for ins in instructions:
             op, ops = str(ins.operator), ins.operands
             if op == "q":
@@ -385,8 +394,8 @@ def _excluded(pdf) -> set:
     return out
 
 
-def _plan(pdf, engine, dry=False) -> tuple[_Plan, Rewriter]:
-    plan, rw = _Plan(), Rewriter(engine)
+def _plan(pdf, engine, dry=False, near_black=False) -> tuple[_Plan, Rewriter]:
+    plan, rw = _Plan(), Rewriter(engine, near_black)
     skip = _excluded(pdf)
     for number, page in enumerate(pdf.pages, 1):
         new, changed = rw.rewrite(list(pikepdf.parse_content_stream(page)), page.resources)
@@ -474,18 +483,18 @@ def _counts(c: Counter) -> str:
     return ", ".join(f"{c[k]} {k}" for k in order if c.get(k))
 
 
-def propose_rgb_to_cmyk(path: str, options: Options | None = None, profile=None, **_) -> Proposal:
+def propose_rgb_to_cmyk(path: str, options: Options | None = None, profile=None, near_black=False, **_) -> Proposal:
     """What the fix would change. Reads only."""
     engine = Engine(find_profile(profile))
     proposal = Proposal(NAME, path)
     with pikepdf.open(path) as pdf:
         before = _rgb_events(pdf)
-        plan, rw = _plan(pdf, engine, dry=True)  # images are only checked here; the write converts them
+        plan, rw = _plan(pdf, engine, dry=True, near_black=near_black)  # images only checked here; the write converts them
         vectors = [e for page in pdf.pages for e in walk_page(page).events
                    if e.cs.kind == "rgb" and e.kind in ("path", "text") and e.colour]
         blacks = sum(1 for e in vectors if not any(e.colour))
         # near blacks are not pure black, so they follow the profile: a four-colour black
-        near = [e for e in vectors if any(e.colour) and max(e.colour) <= NEAR_BLACK]
+        near = [e for e in vectors if is_near_black(e.colour)]
     anything = plan.pages or plan.streams or plan.images or plan.shadings or plan.patterns
     for page in sorted(before):
         text = f"Converts RGB to CMYK ({engine.name}): {_counts(before[page])} object(s)."
@@ -493,15 +502,20 @@ def propose_rgb_to_cmyk(path: str, options: Options | None = None, profile=None,
     if blacks:
         proposal.reasons.append((min(before) if before else 1, f"{blacks} pure RGB black text or vector object(s) become "
                                                                "K100 only, not a four-colour black."))
-    if near:
+    if near and near_black:
+        proposal.reasons.append((min(before) if before else 1, f"{len(near)} near-black RGB text or vector object(s) "
+                                 f"(neutral, no channel above {NEAR_BLACK * 100:.0f}%) also become K100 only, "
+                                 "as asked (--near-black-to-k)."))
+    elif near:
         ink = round(sum(engine.colour(near[0].colour)) * 100)
         proposal.reasons.append((min(before) if before else 1, f"{len(near)} near-black RGB text or vector object(s) "
-                                 f"(no channel above {NEAR_BLACK * 100:.0f}%) are not pure black, so they follow the "
-                                 f"profile and become a four-colour black (about {ink}% ink)."))
+                                 f"(neutral, no channel above {NEAR_BLACK * 100:.0f}%) are not pure black, so they follow "
+                                 f"the profile and become a four-colour black (about {ink}% ink). "
+                                 "--near-black-to-k makes them K100 too."))
     for why, n in plan.left.items():
         proposal.skipped.append((1, f"{n} {why} left in RGB"))
     if anything:
-        proposal.plan = {0: {"profile": engine.path}}
+        proposal.plan = {0: {"profile": engine.path, "near_black": near_black}}
     elif not plan.left:
         proposal.skipped.append((1, "there is no RGB colour to convert"))
     return proposal
@@ -509,7 +523,7 @@ def propose_rgb_to_cmyk(path: str, options: Options | None = None, profile=None,
 
 # ---- writing ------------------------------------------------------------------------------
 
-def _check(src, engine):
+def _check(src, engine, near_black=False):
     def check(new_path):
         with pikepdf.open(src) as a, pikepdf.open(new_path) as b:
             for number, (pa, pb) in enumerate(zip(a.pages, b.pages), 1):
@@ -526,7 +540,8 @@ def _check(src, engine):
                         # every RGB text and vector colour must be converted; pure black exactly to K100
                         if y.cs.kind != "cmyk":
                             raise AppendError(f"verification failed: page {number}, object {i} is still RGB")
-                        if not any(x.colour) and tuple(y.colour) != (0, 0, 0, 1):
+                        black = not any(x.colour) or (near_black and is_near_black(x.colour))
+                        if black and tuple(y.colour) != (0, 0, 0, 1):
                             raise AppendError(f"verification failed: page {number}, object {i}'s black is not K100")
     return check
 
@@ -536,8 +551,9 @@ def write_rgb_to_cmyk(proposal: Proposal, dst: str) -> None:
     if proposal.empty:
         raise ValueError("nothing to change")
     engine = Engine(proposal.plan[0]["profile"])
+    near_black = proposal.plan[0].get("near_black", False)
     with pikepdf.open(proposal.path) as pdf:
-        plan, _ = _plan(pdf, engine)
+        plan, _ = _plan(pdf, engine, near_black=near_black)
         changes, additions = {}, {}
         for fn in plan.created:
             additions[fn.objgen] = fn
@@ -569,4 +585,4 @@ def write_rgb_to_cmyk(proposal: Proposal, dst: str) -> None:
         changes.update(plan.images)
         changes.update(plan.shadings)
         changes.update(plan.patterns)
-        append_update(proposal.path, dst, changes, additions, extra_check=_check(proposal.path, engine))
+        append_update(proposal.path, dst, changes, additions, extra_check=_check(proposal.path, engine, near_black))
