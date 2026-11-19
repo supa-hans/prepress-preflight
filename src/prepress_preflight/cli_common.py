@@ -12,6 +12,26 @@ def parse_trim(text: str) -> tuple[float, float]:
     return float(m.group(1)), float(m.group(2))
 
 
+def add_check_options(parser) -> None:
+    """The options that change what the checks measure. Shared by `preflight` and `preflight report`."""
+    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="expected trim size in mm, e.g. 90x55")
+    parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="minimum bleed (default 3)")
+    parser.add_argument("--safe-margin", type=float, default=1.5, metavar="MM",
+                        help="keep text and loose artwork this far inside the trim (default 1.5)")
+    parser.add_argument("--ink-limit", type=float, default=400.0, metavar="PCT",
+                        help="total ink limit in percent (default 400, a placeholder until the press limit is known)")
+    parser.add_argument("--cmyk-only", action="store_true",
+                        help="the job prints in process colours only: any printing spot colour is a fail")
+    parser.add_argument("--bound", action="store_true",
+                        help="bound job: spine edges need no bleed (page 1 is a right-hand page)")
+
+
+def options_from(args):
+    from .checks import Options
+    return Options(expected_trim_mm=args.trim, min_bleed_mm=args.min_bleed, bound=args.bound,
+                   ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin, cmyk_only=args.cmyk_only)
+
+
 def add_step_options(parser) -> None:
     """The options a fix step takes. Shared by `preflight fix` and saved action lists."""
     parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="set-boxes, scale: the job's trim size in mm, e.g. 845x2100")

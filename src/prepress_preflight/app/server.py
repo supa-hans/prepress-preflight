@@ -107,6 +107,8 @@ class Session:
         self.base_report: dict | None = None
         self.exported: str | None = None
         self.export_error: str | None = None
+        self.result = None  # the engine's result for the open file, for the report
+        self.report_written: str | None = None
 
     def open(self, path: str) -> None:
         path = os.path.abspath(os.path.expanduser(path))
@@ -115,6 +117,7 @@ class Session:
         remember(path)
         with self.lock:
             self.path, self.report, self.error, self.busy = path, None, None, True
+            self.result, self.report_written = None, None
             self._renders.clear()
             self._drop_preview()
             self._drop_queue()
@@ -132,8 +135,29 @@ class Session:
             return
         with self.lock:
             if self.path == path:
-                self.report, self.busy = report, False
+                self.report, self.busy, self.result = report, False, result
                 self.base_path, self.base_report = path, report
+
+    def save_report(self, dst: str | None = None) -> str | None:
+        """Write the open file's preflight report as HTML: to `dst`, or where the
+        user chooses (Mac), or beside the PDF. None if the user cancelled."""
+        from ..report_html import default_report_path, write_report
+        with self.lock:
+            path, result = self.path, self.result
+        if path is None or result is None:
+            raise ValueError("Open a file and wait for its check first")
+        if not dst:
+            if sys.platform == "darwin":
+                dst = choose_save_name(path, "Save the preflight report as", " preflight report.html")
+                if dst is None:
+                    return None
+            else:
+                dst = default_report_path(path)
+        with RENDER_LOCK:  # thumbnails are drawn with PyMuPDF
+            written = write_report(result, dst, self.options)
+        with self.lock:
+            self.report_written = written
+        return written
 
     def state(self) -> dict:
         with self.lock:
@@ -464,14 +488,14 @@ def suggest(report: dict) -> list[list[str]]:
     return out
 
 
-def choose_save_name(original: str) -> str | None:
+def choose_save_name(original: str, prompt: str = "Save the fixed copy as", suffix: str = " fixed.pdf") -> str | None:
     """The Mac's own save dialog, through AppleScript. None if cancelled."""
     if sys.platform != "darwin":
         return None
     stem = os.path.splitext(os.path.basename(original))[0].replace('"', "")
     folder = os.path.dirname(original).replace('"', "")
-    script = (f'POSIX path of (choose file name with prompt "Save the fixed copy as" '
-              f'default name "{stem} fixed.pdf" default location (POSIX file "{folder}"))')
+    script = (f'POSIX path of (choose file name with prompt "{prompt}" '
+              f'default name "{stem}{suffix}" default location (POSIX file "{folder}"))')
     done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     return done.stdout.strip() or None
 
@@ -602,10 +626,14 @@ def make_handler(session: Session, key: str, port_ref: dict):
                         raise ValueError("Exporting needs a confirmation")
                     written = session.export(str(body.get("path") or ""))
                     return self._json(HTTPStatus.OK, {"written": written, **session.state()})
+                if url.path == "/api/report":
+                    written = session.save_report(str(body.get("path") or "") or None)
+                    return self._json(HTTPStatus.OK, {"written": written})
                 if url.path == "/api/reveal":
                     state = session.state()
-                    if state["exported"] and sys.platform == "darwin":
-                        subprocess.run(["open", "-R", state["exported"]], check=False)
+                    target = session.report_written if body.get("what") == "report" else state["exported"]
+                    if target and sys.platform == "darwin":
+                        subprocess.run(["open", "-R", target], check=False)
                     return self._json(HTTPStatus.OK, state)
                 if url.path == "/api/preview":
                     fix = body.get("fix", "")

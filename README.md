@@ -36,6 +36,17 @@ preflight *.pdf                       # several files
 
 Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 
+## Reports
+
+```sh
+preflight report artwork.pdf                       # writes "artwork preflight report.html" beside it
+preflight report artwork.pdf --out ~/Desktop/r.html --ink-limit 320
+```
+
+One HTML file to keep or send to a client: status, each finding with why it
+matters, and pictures of the pages with the problems marked and numbered. The
+PDF is only read; an existing file is never overwritten. In the app: Save report….
+
 ## The app
 
 ```sh

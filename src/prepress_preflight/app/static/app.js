@@ -113,6 +113,7 @@
     if (!s.path) renderRecent(s.recent || []);
     document.title = s.name ? `${s.name} · Preflight` : "Preflight";
     $("busy").hidden = !s.busy;
+    $("save-report").disabled = !s.report;
     if (s.error) {
       $("empty").hidden = false;
       $("sheet").hidden = true;
@@ -794,6 +795,28 @@
     noticeTimer = setTimeout(() => { n.hidden = true; }, 5000);
   };
   window.preflightRefresh = () => { state.path = null; poll(); };
+
+  // ---- the report to keep or send ---------------------------------------------
+  $("save-report").onclick = async () => {
+    const b = $("save-report");
+    b.disabled = true;
+    const n = $("notice");
+    n.textContent = "Writing the report…"; n.hidden = false; clearTimeout(noticeTimer);
+    try {
+      const { written } = await api("/api/report", { method: "POST", body: "{}" });
+      if (!written) { n.hidden = true; return; }  // the save dialog was cancelled
+      n.textContent = `Report saved: ${written.split("/").pop()} `;
+      const reveal = document.createElement("button");
+      reveal.textContent = "Show in Finder";
+      reveal.onclick = () => api("/api/reveal", { method: "POST", body: JSON.stringify({ what: "report" }) });
+      n.append(reveal);
+      noticeTimer = setTimeout(() => { n.hidden = true; }, 12000);
+    } catch (e) {
+      window.preflightNotice(`The report could not be written: ${e.message}`);
+    } finally {
+      b.disabled = !state.report;
+    }
+  };
   const native = () => typeof window.pywebview !== "undefined";
   document.addEventListener("dragover", (e) => { e.preventDefault(); $("canvas").classList.add("drop"); });
   document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("canvas").classList.remove("drop"); });

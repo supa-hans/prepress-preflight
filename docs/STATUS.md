@@ -831,6 +831,30 @@ about 3 s).
 
 Next: other single-object edits (remove, recolour), when wanted.
 
+## Preflight report to keep or send (added 2026-11-19)
+
+`preflight report file.pdf [--out report.html]` and the app's "Save report…"
+button write the findings as one self-contained HTML file: status, the
+options checked against, every finding (fails first) with its pages and a
+plain-English line on why it matters (not on notes, where it could mislead),
+then pictures of the pages with something marked, the marks numbered to match
+the findings, with trim and bleed drawn. Passed checks listed at the end.
+
+Choices: thumbnails are JPEG (the 56-page catalogue report is 2.2 MB, the
+banner's 216 KB; PNG made the catalogue's 7 MB), at most 24 pages pictured,
+fails first. Large marked areas are outlined only: a tint over the banner's
+black panel turned it maroon on the page. Pictures are drawn with colour
+management off, as in the app, and the report says colours are approximate.
+The report never overwrites a file (the PDF above all), must end in .html,
+and defaults to "<name> preflight report.html" beside the PDF (numbered if
+taken). Nothing is loaded from the internet, so it opens anywhere.
+
+The command takes the same check options as `preflight` (now shared in
+`cli_common.add_check_options`) and exits 1 on a FAIL, like `preflight`. The
+app's button reuses the result of the check made when the file was opened, and
+uses the Mac's save dialog (beside the PDF elsewhere); the save dialog itself
+was not driven in testing (it is the system's own), the endpoint behind it is.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

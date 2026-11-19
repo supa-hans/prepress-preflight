@@ -1,6 +1,7 @@
 """Command line: preflight file.pdf [--json] [--trim WxH] [--bound]
 
 Also: preflight fix NAME file.pdf [--write new.pdf]  (see fix_cli.py)
+      preflight report file.pdf [--out report.html]   (an HTML report to keep or send)
 """
 from __future__ import annotations
 
@@ -9,9 +10,8 @@ import json
 import sys
 
 from . import __version__
-from .checks import Options
 from .engine import run
-from .cli_common import parse_trim
+from .cli_common import add_check_options, options_from
 from .report import render
 
 
@@ -23,27 +23,19 @@ def main(argv=None) -> int:
     if argv[:1] == ["app"]:
         from .app.server import main as app_main
         return app_main(argv[1:])
+    if argv[:1] == ["report"]:
+        return report_main(argv[1:])
     if argv[:1] == ["actions"]:
         from .actions import main as actions_main
         return actions_main(argv[1:])
     parser = argparse.ArgumentParser(prog="preflight", description="Read-only preflight checks for print PDFs.")
     parser.add_argument("files", nargs="+", help="PDF file(s) to check")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
-    parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="expected trim size in mm, e.g. 90x55")
-    parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="minimum bleed (default 3)")
-    parser.add_argument("--safe-margin", type=float, default=1.5, metavar="MM",
-                        help="keep text and loose artwork this far inside the trim (default 1.5)")
-    parser.add_argument("--ink-limit", type=float, default=400.0, metavar="PCT",
-                        help="total ink limit in percent (default 400, a placeholder until the press limit is known)")
-    parser.add_argument("--cmyk-only", action="store_true",
-                        help="the job prints in process colours only: any printing spot colour is a fail")
-    parser.add_argument("--bound", action="store_true",
-                        help="bound job: spine edges need no bleed (page 1 is a right-hand page)")
+    add_check_options(parser)
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
-    options = Options(expected_trim_mm=args.trim, min_bleed_mm=args.min_bleed, bound=args.bound,
-                      ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin, cmyk_only=args.cmyk_only)
+    options = options_from(args)
     results, errors = [], 0
     for path in args.files:
         try:
@@ -59,6 +51,28 @@ def main(argv=None) -> int:
     if errors:
         return 2
     return 1 if any(r.status == "FAIL" for r in results) else 0
+
+
+def report_main(argv) -> int:
+    """preflight report file.pdf [--out report.html]: check, and write the report as one HTML file."""
+    from .report_html import default_report_path, write_report
+    parser = argparse.ArgumentParser(prog="preflight report",
+                                     description="Check a PDF and write the findings as one HTML file to keep or send. "
+                                                 "The PDF is only read.")
+    parser.add_argument("file", help="the PDF to check")
+    parser.add_argument("--out", metavar="REPORT.html",
+                        help="where to write the report (default: '<name> preflight report.html' beside the PDF)")
+    add_check_options(parser)
+    args = parser.parse_args(argv)
+    options = options_from(args)
+    try:
+        result = run(args.file, options)
+        dst = write_report(result, args.out or default_report_path(args.file), options)
+    except Exception as exc:
+        print(f"preflight report: {exc}", file=sys.stderr)
+        return 2
+    print(f"{result.status}: report written to {dst}")
+    return 1 if result.status == "FAIL" else 0
 
 
 if __name__ == "__main__":

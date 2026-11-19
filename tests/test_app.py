@@ -418,3 +418,16 @@ def test_white_overprint_suggests_knocking_it_out(app, make):
     report = wait_report(app(make(b"/GS0 gs 0 0 0 0 k 120 120 20 20 re f", extgstate=gs)))["report"]
     i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "White overprint")
     assert report["suggestions"][i] == ["knock-out-white"]
+
+
+def test_save_report(app, make, tmp_path):
+    import pikepdf
+    gs = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
+    base = app(make(b"/GS0 gs 0 0 0 0 k 120 120 20 20 re f", extgstate=gs))
+    wait_report(base)
+    dst = tmp_path / "job report.html"  # given, so no save dialog opens
+    assert post(base, "/api/report", {"path": str(dst)})["written"] == str(dst)
+    assert "White overprint" in dst.read_text()
+    with pytest.raises(urllib.error.HTTPError) as e:
+        post(base, "/api/report", {"path": str(dst)})
+    assert e.value.code == 400  # never overwritten
