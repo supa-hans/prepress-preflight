@@ -114,7 +114,7 @@ def _step_settings(listed, args, argv):
             skip_next = True
         elif token.startswith("--write="):
             continue
-        elif token in ("--yes", "--no-preview"):
+        elif token in ("--yes", "--no-preview", "--compact"):
             continue
         elif token in positionals:
             positionals.remove(token)
@@ -139,6 +139,9 @@ def main(argv) -> int:
                                      "or @name for a saved action list (see: preflight actions)")
     parser.add_argument("file", help="the PDF to fix; it is never modified")
     parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
+    parser.add_argument("--compact", action="store_true",
+                        help="write the fixed copy as a fresh file without what the fixes replaced (smaller; the "
+                             "original's bytes are then not kept at its start, and it is checked page by page instead)")
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
     add_step_options(parser)
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
@@ -195,12 +198,18 @@ def main(argv) -> int:
                 print("Nothing written.")
                 return 1
         try:
-            deliver(args.file, final, args.write)
+            deliver(args.file, final, args.write, compact=args.compact)
         except Exception as exc:
             print(f"preflight fix: nothing written: {exc}", file=sys.stderr)
             return 2
-        print(f"Written and verified: {args.write}")
-        print("  The original's bytes are unchanged at the start of the new file; the changes were added after them.")
+        mb = lambda p: f"{os.path.getsize(p) / 1e6:.1f} MB"
+        print(f"Written and verified: {args.write} ({mb(args.write)}; the original is {mb(args.file)})")
+        if args.compact:
+            print("  Compact: only the objects in use were written, and every page was checked against the full result.")
+        else:
+            print("  The original's bytes are unchanged at the start of the new file; the changes were added after them.")
+            if os.path.getsize(args.write) > 1.25 * os.path.getsize(args.file):
+                print("  It grew because the replaced originals are kept; --compact writes a smaller file without them.")
         return 0
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

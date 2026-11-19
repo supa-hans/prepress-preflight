@@ -57,8 +57,15 @@ def final_file(steps: list[Step]) -> str | None:
     return outputs[-1] if outputs else None
 
 
-def deliver(original: str, final: str, dst: str) -> None:
-    """Copy the chain's result to `dst`, after checking it once more as a whole."""
+def deliver(original: str, final: str, dst: str, compact: bool = False) -> None:
+    """Copy the chain's result to `dst`, after checking it once more as a whole.
+
+    compact: write it as a fresh file holding only the objects still in use, so
+    what the fixes replaced (RGB images after a conversion, say) is dropped. The
+    stream data is copied byte for byte. The original's bytes are then no longer
+    at the start, so the compact file is checked against the verified result
+    instead: same pages, same objects painted, same rendering.
+    """
     if os.path.exists(dst):
         raise AppendError(f"{dst} already exists; choose a new file name")
     if os.path.realpath(dst) == os.path.realpath(original):
@@ -70,10 +77,65 @@ def deliver(original: str, final: str, dst: str) -> None:
         raise AppendError("verification failed: the result has structural problems: " + "; ".join(new[:3]))
     tmp = dst + ".partial"
     try:
-        shutil.copyfile(final, tmp)
-        if not _same_prefix(final, tmp, os.path.getsize(final)) or os.path.getsize(tmp) != os.path.getsize(final):
-            raise AppendError("verification failed: the copy does not match")
+        if compact:
+            write_compact(final, tmp)
+            verify_compact(final, tmp)
+        else:
+            shutil.copyfile(final, tmp)
+            if not _same_prefix(final, tmp, os.path.getsize(final)) or os.path.getsize(tmp) != os.path.getsize(final):
+                raise AppendError("verification failed: the copy does not match")
         os.replace(tmp, dst)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+# ---- compact delivery -------------------------------------------------------------
+
+COMPACT_DPI = 36  # resolution of the render comparison
+RENDER_TOLERANCE = 8  # per channel, 0-255: MuPDF varies by a few levels between runs
+
+
+def write_compact(src: str, dst: str) -> None:
+    """A fresh copy of `src` with only the objects in use. Streams are copied as
+    they are (not decoded and re-encoded)."""
+    import pikepdf
+
+    with pikepdf.open(src) as pdf:
+        pdf.save(dst, stream_decode_level=pikepdf.StreamDecodeLevel.none,
+                 object_stream_mode=pikepdf.ObjectStreamMode.preserve, linearize=False)
+
+
+def verify_compact(full: str, compact: str) -> None:
+    """The compact file must be the verified result, page for page: the same
+    boxes, the same objects painted, the same rendering, and no new structural
+    problems."""
+    import numpy as np
+    import pikepdf
+    import pymupdf
+
+    from ..content import walk_page
+
+    new = sorted(syntax_problems(compact) - syntax_problems(full))
+    if new:
+        raise AppendError("verification failed: the compact file has structural problems: " + "; ".join(new[:3]))
+    with pikepdf.open(full) as a, pikepdf.open(compact) as b:
+        if len(a.pages) != len(b.pages):
+            raise AppendError("verification failed: the compact file has a different number of pages")
+        for number, (pa, pb) in enumerate(zip(a.pages, b.pages), 1):
+            for box in ("/MediaBox", "/CropBox", "/TrimBox", "/BleedBox", "/Rotate", "/UserUnit"):
+                if repr(pa.obj.get(box)) != repr(pb.obj.get(box)):
+                    raise AppendError(f"verification failed: page {number}'s {box[1:]} differs in the compact file")
+            ea, eb = walk_page(pa).events, walk_page(pb).events
+            key = lambda e: (e.kind, e.paint, e.cs, e.colour, e.bbox, e.overprint, e.opm, e.blend, e.width, e.font, e.px)
+            if [key(e) for e in ea] != [key(e) for e in eb]:
+                raise AppendError(f"verification failed: page {number} paints different objects in the compact file")
+    with pymupdf.open(full) as da, pymupdf.open(compact) as db:
+        for i in range(len(da)):
+            ra = da.load_page(i).get_pixmap(dpi=COMPACT_DPI, alpha=False, colorspace=pymupdf.csCMYK)
+            rb = db.load_page(i).get_pixmap(dpi=COMPACT_DPI, alpha=False, colorspace=pymupdf.csCMYK)
+            if (ra.width, ra.height) != (rb.width, rb.height):
+                raise AppendError(f"verification failed: page {i + 1} renders at a different size in the compact file")
+            diff = np.abs(np.frombuffer(ra.samples, np.uint8).astype(int) - np.frombuffer(rb.samples, np.uint8).astype(int))
+            if diff.size and diff.max() > RENDER_TOLERANCE:
+                raise AppendError(f"verification failed: page {i + 1} renders differently in the compact file")

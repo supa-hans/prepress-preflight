@@ -733,7 +733,12 @@
     $("export-go").disabled = !n;
     $("export-choose").disabled = !n;
     $("export-done").hidden = !state.exported;
-    $("export-written").textContent = state.exported ? `Written and verified: ${state.exported}` : "";
+    const mb = (b) => `${(b / 1e6).toFixed(1)} MB`;
+    const sz = state.exportSizes;
+    $("export-written").textContent = state.exported
+      ? `Written and verified: ${state.exported}` + (sz ? ` (${mb(sz.size)}; the original is ${mb(sz.original)})` : "")
+        + (sz && !sz.compact && sz.size > 1.25 * sz.original ? ". It grew because the replaced originals are kept; Compact leaves them out." : "")
+      : "";
   }
 
   async function chooseSaveName() {
@@ -748,7 +753,7 @@
     $("export-error").hidden = true;
     if (!dest) { $("export-error").textContent = "Choose where to save the new file first."; $("export-error").hidden = false; return; }
     const n = state.queue.length;
-    $("confirm-text").textContent = `Write ${n} fix${n > 1 ? "es" : ""} to the new file ${dest}? The original is not changed.`;
+    $("confirm-text").textContent = `Write ${n} fix${n > 1 ? "es" : ""} to the new file ${dest}${$("export-compact").checked ? ", compact" : ""}? The original is not changed.`;
     $("confirm").hidden = false;
     $("confirm-yes").focus();
   }
@@ -757,7 +762,10 @@
     $("confirm").hidden = true;
     $("export-go").disabled = true;
     try {
-      show(await api("/api/export", { method: "POST", body: JSON.stringify({ path: $("export-path").value.trim(), confirm: true }) }));
+      const r = await api("/api/export", { method: "POST",
+        body: JSON.stringify({ path: $("export-path").value.trim(), confirm: true, compact: $("export-compact").checked }) });
+      state.exportSizes = { size: r.size, original: r.original_size, compact: $("export-compact").checked };
+      show(r);
     } catch (e) {
       $("export-error").textContent = e.message;
       $("export-error").hidden = false;

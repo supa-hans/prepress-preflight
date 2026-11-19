@@ -103,6 +103,10 @@ preflight fix object-overprint catalogue.pdf --object 48:1240 --overprint off --
 | object-overprint | Sets overprint on or off for one object (`--object PAGE:NUMBER`, numbered as the app's inspector shows them; `--overprint on/off`). Easiest from the app: click the page, choose the object, and use its button. Only that object changes, verified against every other object on the page. Refused for an object inside a form painted more than once, and not allowed in saved action lists. |
 | set-boxes | Sets the trim box to the job size (`--trim WxH`, centred on the current trim) and grows the bleed box to at least 3 mm where the page has room. Never shrinks a bleed box. |
 
+With `--compact` (or Compact in the app's Export), the new file is written fresh
+with only the objects still in use, which can be much smaller after
+rgb-to-cmyk; it is then checked page by page against the full result.
+
 The new file is the original, byte for byte, with the changes appended (a PDF
 incremental update, as Acrobat's Save does). It is verified before it is put
 in place: original bytes intact, structure sound, only the intended objects

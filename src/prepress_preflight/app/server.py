@@ -300,7 +300,7 @@ class Session:
 
     # ---- export -----------------------------------------------------------
 
-    def export(self, dst: str) -> str:
+    def export(self, dst: str, compact: bool = False) -> str:
         """Write the queue's result to a new file. Only after the user confirmed it."""
         with self.lock:
             if self.preview_busy:
@@ -316,7 +316,7 @@ class Session:
         if not os.path.isdir(os.path.dirname(dst)):
             raise ValueError("That folder does not exist")
         with RENDER_LOCK:
-            deliver(original, final, dst)  # checks the original's bytes are intact first
+            deliver(original, final, dst, compact=compact)  # checks the original's bytes are intact first
         with self.lock:
             self.exported, self.export_error = dst, None
         return dst
@@ -626,8 +626,9 @@ def make_handler(session: Session, key: str, port_ref: dict):
                 if url.path == "/api/export":
                     if body.get("confirm") is not True:
                         raise ValueError("Exporting needs a confirmation")
-                    written = session.export(str(body.get("path") or ""))
-                    return self._json(HTTPStatus.OK, {"written": written, **session.state()})
+                    written = session.export(str(body.get("path") or ""), compact=body.get("compact") is True)
+                    sizes = {"size": os.path.getsize(written), "original_size": os.path.getsize(session.path)}
+                    return self._json(HTTPStatus.OK, {"written": written, **sizes, **session.state()})
                 if url.path == "/api/report":
                     written = session.save_report(str(body.get("path") or "") or None)
                     return self._json(HTTPStatus.OK, {"written": written})

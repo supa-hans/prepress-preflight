@@ -431,3 +431,15 @@ def test_save_report(app, make, tmp_path):
     with pytest.raises(urllib.error.HTTPError) as e:
         post(base, "/api/report", {"path": str(dst)})
     assert e.value.code == 400  # never overwritten
+
+
+def test_export_compact(app, make, tmp_path):
+    src = banner_like(make)
+    base = app(src)
+    wait_report(base)
+    post(base, "/api/preview", {"fix": "trim-from-marks", "options": []})
+    wait_preview(base)
+    post(base, "/api/keep", {})
+    dst = tmp_path / "small.pdf"
+    r = post(base, "/api/export", {"path": str(dst), "confirm": True, "compact": True})
+    assert r["written"] == str(dst) and r["size"] == os.path.getsize(dst) and r["original_size"] == os.path.getsize(src)

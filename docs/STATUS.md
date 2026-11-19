@@ -888,8 +888,7 @@ Results (2026-11-19), all three RGB samples pass the RGB check afterwards:
 
 Size: CMYK JPEGs are about 2.5-3.5x an RGB JPEG of the same photo (four full
 channels, no chroma subsampling), and the incremental update keeps the
-original RGB images too. A compacting export (a full rewrite dropping
-superseded objects) would recover much of that; not built yet.
+original RGB images too. The compact export (below) drops those.
 
 Near-black, owner's decision (2026-11-20): an option, generally off.
 `--near-black-to-k` (a checkbox in the app) makes near-black text and vectors
@@ -897,6 +896,27 @@ K100 too. Near-black means neutral (channels within 2% of each other) with no
 channel above 10%, so a navy-black stays coloured. Off, they follow the
 profile, and the proposal counts them and names the option: Little Stars has
 414 (about 318% ink each); 100 more dark colours there are not neutral.
+
+## Compact export (added 2026-11-20)
+
+`--compact` on `preflight fix … --write`, and a Compact checkbox in the app's
+Export, write the verified result as a fresh file holding only the objects
+still in use, so what the fixes replaced is left out. Streams are copied byte
+for byte (no decoding or re-encoding). My call: off by default, because the
+normal export keeps the original's bytes intact at the start of the new file,
+which is the strongest guarantee; the export says when the file grew by more
+than a quarter and points at Compact.
+
+Since the original's bytes are no longer at the start, a compact file is
+checked against the verified full result instead: same page count and page
+boxes, the same objects painted on every page (kind, colour, place, overprint,
+blend, line weight, font, image size), every page rendered and compared (36 dpi,
+CMYK, within 8 levels for MuPDF's run-to-run jitter), and no new structural
+problems.
+
+Yearbook after rgb-to-cmyk: 172 MB normal, 123 MB compact (the original is
+50 MB), written and verified in 16 s. What remains is CMYK photos being larger
+than RGB JPEGs.
 
 ## Next tasks, in order
 
