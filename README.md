@@ -41,6 +41,7 @@ Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 ```sh
 preflight report artwork.pdf                       # writes "artwork preflight report.html" beside it
 preflight report artwork.pdf --out ~/Desktop/r.html --ink-limit 320
+preflight report jobs/ --out-dir ~/Desktop/today       # every PDF in a folder, plus a summary (index.html)
 ```
 
 One HTML file to keep or send to a client: status, each finding with why it

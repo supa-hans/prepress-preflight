@@ -11,6 +11,7 @@ import base64
 import datetime
 import html
 import os
+import urllib.parse
 
 import pymupdf
 
@@ -258,3 +259,77 @@ def write_report(result, dst: str, options=None) -> str:
     with open(dst, "x", encoding="utf-8") as f:
         f.write(build_html(result, options))
     return dst
+
+
+# ---- several files: a summary page ------------------------------------------------
+
+def report_name(folder: str, pdf_path: str) -> str:
+    """'<name> preflight report.html' inside `folder`, never an existing file."""
+    stem = os.path.splitext(os.path.basename(pdf_path))[0]
+    candidate = os.path.join(folder, f"{stem} preflight report.html")
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(folder, f"{stem} preflight report {n}.html")
+        n += 1
+    return candidate
+
+
+def build_index(entries, options=None, now: datetime.datetime | None = None) -> str:
+    """The summary of several checked files.
+
+    entries: dicts with "path", and either "result" and "report" (the report's
+    file name, relative to the index) or "error".
+    """
+    now = now or datetime.datetime.now()
+    rank = {"FAIL": 0, "ERROR": 1, "WARN": 2, "PASS": 3}
+    rows = []
+    for e in entries:
+        r = e.get("result")
+        rows.append((rank["ERROR"] if r is None else rank.get(r.status, 9), os.path.basename(e["path"]).lower(), e))
+    rows.sort(key=lambda t: (t[0], t[1]))
+    totals = {"FAIL": 0, "WARN": 0, "PASS": 0, "ERROR": 0}
+    body = []
+    for _, _, e in rows:
+        name = os.path.basename(e["path"])
+        r = e.get("result")
+        if r is None:
+            totals["ERROR"] += 1
+            body.append(f"<tr><td class=\"file\">{_esc(name)}</td><td><span class=\"status FAIL\">Could not check</span></td>"
+                        f"<td colspan=\"3\">{_esc(e['error'])}</td></tr>")
+            continue
+        totals[r.status] = totals.get(r.status, 0) + 1
+        problems = [f for f in sorted(r.findings, key=lambda f: ORDER.get(f.severity, 9)) if f.severity != NOTE]
+        top = "".join(f"<li><span class=\"sev {f.severity}\">{LABEL[f.severity]}</span> {_esc(f.check)}: "
+                      f"{_esc(f.message)}</li>" for f in problems[:3])
+        more = f"<li class=\"meta\">and {len(problems) - 3} more</li>" if len(problems) > 3 else ""
+        href = urllib.parse.quote(e["report"])  # names may hold #, % or spaces
+        body.append(f"<tr><td class=\"file\"><a href=\"{_esc(href)}\">{_esc(name)}</a></td>"
+                    f"<td><span class=\"status {r.status}\">{r.status}</span></td>"
+                    f"<td>{r.page_count}</td><td>{_esc(_size_text(r.geometry))}</td>"
+                    f"<td><ul class=\"top\">{top or '<li class=meta>Nothing to fix</li>'}{more}</ul></td></tr>")
+    summary = ", ".join(f"{n} {label}" for key, label in (("FAIL", "fail"), ("ERROR", "could not be checked"),
+                                                          ("WARN", "with warnings"), ("PASS", "pass"))
+                        if (n := totals[key]))
+    extra_css = """
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-top: 1px solid var(--line); font-size: 13px; }
+th { color: var(--muted); font-weight: 500; border-top: 0; }
+td.file { overflow-wrap: anywhere; max-width: 260px; }
+td a { color: inherit; }
+ul.top { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.table-wrap { overflow-x: auto; }
+"""
+    checked = ""
+    if options is not None:
+        checked = (f"<p class=\"meta\">Checked for {options.min_bleed_mm:g} mm bleed, {options.safe_margin_mm:g} mm safe margin, "
+                   f"{options.ink_limit_pct:g}% total ink.</p>")
+    return "\n".join([
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
+        f"<title>Preflight summary: {len(entries)} files</title><style>{CSS}{extra_css}</style></head><body><main>",
+        f"<h1>Preflight summary: {len(entries)} file{'s' if len(entries) != 1 else ''}</h1>",
+        f"<p class=\"meta\">{_esc(summary)} · checked on {now.day} {now:%B %Y, %H:%M}</p>", checked,
+        "<div class=\"table-wrap\"><table><thead><tr><th>File</th><th>Result</th><th>Pages</th><th>Trim</th>"
+        "<th>Main problems</th></tr></thead><tbody>", *body, "</tbody></table></div>",
+        f"<footer>Checked with prepress-preflight {__version__}. The PDFs were read only, not changed. "
+        "Each file name opens its full report.</footer></main></body></html>"])

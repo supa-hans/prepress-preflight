@@ -897,6 +897,17 @@ channel above 10%, so a navy-black stays coloured. Off, they follow the
 profile, and the proposal counts them and names the option: Little Stars has
 414 (about 318% ink each); 100 more dark colours there are not neutral.
 
+## Reports for many files (added 2026-11-20)
+
+`preflight report a.pdf b.pdf jobs/ [--out-dir FOLDER]` checks every PDF named
+and every PDF directly inside the folders named (each once), writes each one's
+report into one new folder, and an `index.html` summary: worst first, with
+result, pages, trim size and the first three problems, each file linking to
+its full report. A file that cannot be read is listed as "Could not check"
+(exit code 2), never skipped. The default folder is "preflight reports <date
+time>" inside the folder given, or beside the first PDF; a folder that is not
+empty is refused. All 14 samples: 38 s, 8.6 MB of reports.
+
 ## Compact export (added 2026-11-20)
 
 `--compact` on `preflight fix … --write`, and a Compact checkbox in the app's

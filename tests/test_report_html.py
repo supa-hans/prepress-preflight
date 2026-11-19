@@ -82,3 +82,42 @@ def test_marks_on_a_rotated_page_are_where_the_finding_is(make):
     x, y, w, h = (float(v) for v in stroke_rects[0])
     pad = (w - 50) / 2
     assert (x + pad, y + pad, w - 2 * pad, h - 2 * pad) == pytest.approx((100, 100, 50, 50), abs=0.2)
+
+
+# ---- several files -------------------------------------------------------------------
+
+from prepress_preflight.report_html import build_index  # noqa: E402
+
+
+def test_folder_of_files_gets_reports_and_a_summary(make, tmp_path, capsys):
+    good = make(b"0 0 0 1 k 100 100 50 50 re f", name="good.pdf")
+    bad = make(WHITE_OP, name="bad #1.pdf", extgstate=GS)
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"not a pdf at all")
+    (tmp_path / "notes.txt").write_text("ignored")
+    out = tmp_path / "reports"
+    code = main(["report", str(tmp_path), good, "--out-dir", str(out)])  # good.pdf named twice: checked once
+    assert code == 2  # one file could not be checked
+    names = sorted(os.listdir(out))
+    assert names == ["bad #1 preflight report.html", "good preflight report.html", "index.html"]
+    index = (out / "index.html").read_text()
+    assert "Preflight summary: 3 files" in index and "1 fail, 1 could not be checked" in index
+    assert index.index("bad #1.pdf") < index.index("broken.pdf") < index.index("good.pdf")  # worst first
+    assert 'href="bad%20%231%20preflight%20report.html"' in index  # links survive # and spaces
+    assert "Could not check" in index
+
+
+def test_several_files_refuse_a_used_folder_and_out(make, tmp_path, capsys):
+    a, b = make(b"", name="a.pdf"), make(b"", name="b.pdf")
+    used = tmp_path / "used"
+    used.mkdir()
+    (used / "x").write_text("x")
+    assert main(["report", a, b, "--out-dir", str(used)]) == 2
+    assert "not empty" in capsys.readouterr().err
+    assert main(["report", a, b, "--out", str(tmp_path / "r.html")]) == 2
+    assert "--out-dir" in capsys.readouterr().err
+
+
+def test_index_escapes_names(make):
+    page = build_index([{"path": "/x/<b>.pdf", "error": "<oops>"}])
+    assert "&lt;b&gt;.pdf" in page and "&lt;oops&gt;" in page and "<oops>" not in page

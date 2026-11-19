@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from . import __version__
@@ -53,26 +54,83 @@ def main(argv=None) -> int:
     return 1 if any(r.status == "FAIL" for r in results) else 0
 
 
+def _pdfs(inputs) -> list[str]:
+    """The PDFs named, and those directly inside any folders named, in order, once each."""
+    out, seen = [], set()
+    for item in inputs:
+        found = ([os.path.join(item, n) for n in sorted(os.listdir(item), key=str.lower)
+                  if n.lower().endswith(".pdf") and not n.startswith(".")] if os.path.isdir(item) else [item])
+        for path in found:
+            key = os.path.realpath(path)
+            if key not in seen:
+                seen.add(key)
+                out.append(path)
+    return out
+
+
+def _default_reports_folder(first_input: str) -> str:
+    """'preflight reports <date time>': inside the folder given, or beside the first PDF."""
+    import datetime
+    where = os.path.abspath(first_input) if os.path.isdir(first_input) else os.path.dirname(os.path.abspath(first_input))
+    return os.path.join(where, f"preflight reports {datetime.datetime.now():%Y-%m-%d %H.%M}")
+
+
 def report_main(argv) -> int:
-    """preflight report file.pdf [--out report.html]: check, and write the report as one HTML file."""
-    from .report_html import default_report_path, write_report
+    """preflight report file.pdf [--out report.html]: check, and write the report as one HTML file.
+    preflight report a.pdf b.pdf folder/ [--out-dir DIR]: a report for each, and a summary (index.html)."""
+    from .report_html import build_index, default_report_path, report_name, write_report
     parser = argparse.ArgumentParser(prog="preflight report",
-                                     description="Check a PDF and write the findings as one HTML file to keep or send. "
-                                                 "The PDF is only read.")
-    parser.add_argument("file", help="the PDF to check")
+                                     description="Check PDFs and write the findings as HTML to keep or send. "
+                                                 "With several files or a folder, each gets a report and a summary page "
+                                                 "lists them all. The PDFs are only read.")
+    parser.add_argument("inputs", nargs="+", metavar="PDF_OR_FOLDER", help="PDF files, or folders of them")
     parser.add_argument("--out", metavar="REPORT.html",
-                        help="where to write the report (default: '<name> preflight report.html' beside the PDF)")
+                        help="one file: where to write its report (default: '<name> preflight report.html' beside it)")
+    parser.add_argument("--out-dir", metavar="FOLDER",
+                        help="several files: a new folder for the reports and the summary (default: "
+                             "'preflight reports <date time>' beside the first input)")
     add_check_options(parser)
     args = parser.parse_args(argv)
     options = options_from(args)
-    try:
-        result = run(args.file, options)
-        dst = write_report(result, args.out or default_report_path(args.file), options)
-    except Exception as exc:
-        print(f"preflight report: {exc}", file=sys.stderr)
+    files = _pdfs(args.inputs)
+    if not files:
+        print("preflight report: no PDF files found", file=sys.stderr)
         return 2
-    print(f"{result.status}: report written to {dst}")
-    return 1 if result.status == "FAIL" else 0
+    single = len(files) == 1 and not any(os.path.isdir(i) for i in args.inputs) and not args.out_dir
+    if single:
+        try:
+            result = run(files[0], options)
+            dst = write_report(result, args.out or default_report_path(files[0]), options)
+        except Exception as exc:
+            print(f"preflight report: {exc}", file=sys.stderr)
+            return 2
+        print(f"{result.status}: report written to {dst}")
+        return 1 if result.status == "FAIL" else 0
+    if args.out:
+        print("preflight report: --out is for one file; use --out-dir for several", file=sys.stderr)
+        return 2
+    folder = args.out_dir or _default_reports_folder(args.inputs[0])
+    if os.path.exists(folder) and os.listdir(folder):
+        print(f"preflight report: {folder} already exists and is not empty; choose a new folder", file=sys.stderr)
+        return 2
+    os.makedirs(folder, exist_ok=True)
+    entries, worst = [], 0
+    for path in files:
+        try:
+            result = run(path, options)
+            dst = write_report(result, report_name(folder, path), options)
+            entries.append({"path": path, "result": result, "report": os.path.basename(dst)})
+            print(f"{result.status:5} {os.path.basename(path)}")
+            worst = max(worst, 1 if result.status == "FAIL" else 0)
+        except Exception as exc:  # listed in the summary as not checked, never skipped
+            entries.append({"path": path, "error": f"{type(exc).__name__}: {exc}"})
+            print(f"ERROR {os.path.basename(path)}: {exc}", file=sys.stderr)
+            worst = 2
+    index = os.path.join(folder, "index.html")
+    with open(index, "x", encoding="utf-8") as f:
+        f.write(build_index(entries, options))
+    print(f"Summary of {len(files)} files: {index}")
+    return worst
 
 
 if __name__ == "__main__":
