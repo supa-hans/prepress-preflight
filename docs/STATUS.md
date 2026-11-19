@@ -855,6 +855,46 @@ app's button reuses the result of the check made when the file was opened, and
 uses the Mac's save dialog (beside the PDF elsewhere); the save dialog itself
 was not driven in testing (it is the system's own), the endpoint behind it is.
 
+## RGB to CMYK (added 2026-11-19)
+
+`rgb-to-cmyk` converts RGB colour through a CMYK profile; the app suggests it
+on the RGB warning. Owner's defaults (2026-11-19): Coated FOGRA39 (Adobe's
+CoatedFOGRA39.icc), `--profile` to override (fogra39, gracol2006, swop, or a
+path); pure RGB black (0,0,0) text and vectors become K100 only.
+
+My technical choices: relative colorimetric with black point compensation via
+LittleCMS (Pillow); DeviceRGB taken as sRGB, embedded RGB profiles honoured,
+CalRGB taken as sRGB. Vector and text colours rewritten in the content.
+Images converted pixel by pixel and kept in their own compression: JPEG
+photos as CMYK JPEG at the source's own quality (read from its quantisation
+tables, 75-95), others Flate. Pillow writes CMYK JPEG inverted (Adobe's
+convention), so those images carry /Decode [1 0 1 0 1 0 1 0]; checked to read
+back right in MuPDF and macOS's renderer (without it, cyan read as its
+opposite). Indexed images get a converted palette only. Axial and radial
+gradients resampled at 256 steps. RGB blending groups switched to CMYK. Soft
+masks and annotation appearances untouched. Left and listed: inline images,
+images that are not 8-bit or carry Decode/colour-key masks, mesh and
+function-based gradients, gradients written inside a resources dictionary.
+
+Results (2026-11-19), all three RGB samples pass the RGB check afterwards:
+  * Brochure cover: 1 photo. 1.6 MB -> 7.1 MB.
+  * Little Stars: 49 pages, ~49,000 RGB objects. 48.5 -> 97.7 MB. Proposal
+    8.5 s (34 s before a Pillow slowdown was avoided: applyTransform copies
+    the profile into every result), write 24 s.
+  * Yearbook: 68 pages, 84,000 RGB text objects, 365 images. 50 -> 172 MB.
+  Colour-managed renders of before and after (MuPDF, ICC on) differ by a mean
+  of 1/255 (yearbook), 5 (cover) and 7 (Little Stars): gamut mapping of
+  bright RGB, and K100 black showing lighter than a rich black.
+
+Size: CMYK JPEGs are about 2.5-3.5x an RGB JPEG of the same photo (four full
+channels, no chroma subsampling), and the incremental update keeps the
+original RGB images too. A compacting export (a full rewrite dropping
+superseded objects) would recover much of that; not built yet.
+
+Open question for the owner: near-black. Little Stars has 514 text/vector
+objects in near-black RGB (e.g. 5,5,5) that are not pure black, so they
+become a four-colour black of about 318% ink. The proposal says so.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known

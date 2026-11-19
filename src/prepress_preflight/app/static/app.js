@@ -29,6 +29,8 @@
       fields: [["spot", "OLD=NEW, one per line", "lines", "", "Pantone 185C=PANTONE 185 C"]] },
     "registration-to-black": { help: "Makes registration colour inside the trim black at the same tint (registration prints on every plate). Marks outside the trim stay registration.",
       fields: [] },
+    "rgb-to-cmyk": { help: "Converts RGB colour to CMYK through a colour profile (relative colorimetric). Pure RGB black text and vectors become K100 only.",
+      fields: [["profile", "Profile", "select", "fogra39", ["fogra39", "gracol2006", "swop"], ["Coated FOGRA39", "Coated GRACoL 2006", "US Web Coated SWOP"]]] },
     "thicken-hairlines": { help: "Thickens lines thinner than 0.25 pt to 0.25 pt as printed. White lines and dielines are left alone.",
       fields: [] },
     "knock-out-white": { help: "Knocks out every white object set to overprint (white overprint does not print). Only those objects change.",

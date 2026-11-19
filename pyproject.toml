@@ -7,7 +7,7 @@ name = "prepress-preflight"
 version = "0.1.0"
 description = "Read-only command-line preflight checker for print PDFs"
 requires-python = ">=3.10"
-dependencies = ["pikepdf>=8", "pymupdf>=1.24", "numpy>=1.24"]
+dependencies = ["pikepdf>=8", "pymupdf>=1.24", "numpy>=1.24", "Pillow>=10"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

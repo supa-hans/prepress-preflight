@@ -478,6 +478,8 @@ def suggest(report: dict) -> list[list[str]]:
             fixes.append("rename-spot")
         elif check == "Registration inside trim" and sev == FAIL:
             fixes.append("registration-to-black")
+        elif check == "RGB":
+            fixes.append("rgb-to-cmyk")
         elif check == "Hairlines" and sev == WARN:
             fixes.append("thicken-hairlines")
         elif check == "White overprint":

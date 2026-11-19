@@ -53,5 +53,8 @@ def add_step_options(parser) -> None:
                         help="object-overprint: the object, as the app's inspector numbers it, e.g. 48:2439")
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
     parser.add_argument("--expect", metavar="TEXT", help="object-overprint: refuse unless the object is still this one")
+    parser.add_argument("--profile", metavar="NAME|PATH",
+                        help="rgb-to-cmyk: the CMYK profile to convert to: fogra39 (default), gracol2006, swop, "
+                             "or the path to an .icc file")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")
