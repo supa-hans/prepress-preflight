@@ -39,6 +39,8 @@ from .bracket import Plan, add_edit, checked_pages, find_spots, ins, known, writ
 from .spot_to_cmyk import _num
 
 NAME = "thicken-hairlines"
+SHORT_PT = 72 / 25.4  # lines under 1 mm long are usually illustration detail, not rules
+SHORT_SHARE = 0.25  # above this share, the preview asks for a look
 
 
 def _scale(state) -> float:
@@ -130,6 +132,10 @@ def _analyse(pdf, pages) -> Plan:
         if spot.restore and old is None:
             plan.leave(spot, "in a form whose uses disagree on line width")
             continue
+        for n, s in spot.flagged:
+            b = s.event.bbox
+            if b is not None and math.hypot(b[2] - b[0], b[3] - b[1]) < SHORT_PT:
+                plan.fixed[n]["short"] += 1
         add_edit(plan, spot, lambda add_gs, w=width: [ins("w", _num(w))],
                  lambda add_gs, w=old: [ins("w", _num(w))], lambda e: "line(s)")
     plan.targets.sort()
@@ -144,8 +150,14 @@ def propose_thicken_hairlines(path: str, options: Options | None = None, **_) ->
     with pikepdf.open(path) as pdf:
         plan = _analyse(pdf, pages)
     for page in sorted(plan.fixed):
-        n = sum(plan.fixed[page].values())
-        proposal.reasons.append((page, f"Thickens {n} line(s) thinner than {MIN_PT:g} pt to {MIN_PT:g} pt as printed."))
+        n = plan.fixed[page]["line(s)"]
+        text = f"Thickens {n} line(s) thinner than {MIN_PT:g} pt to {MIN_PT:g} pt as printed."
+        short = plan.fixed[page]["short"]
+        if n and short / n > SHORT_SHARE:
+            # owner's decision (2026-11-19): the preview decides on illustrated work
+            text += (f" {short} of them are under 1 mm long, which usually means illustration detail drawn with "
+                     "fine strokes: compare Before and After before keeping this.")
+        proposal.reasons.append((page, text))
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} thin line(s) left as they are: {reason}"))

@@ -82,3 +82,15 @@ def test_openness(ops, expected):
     pdf = pikepdf.new()  # kept: a stream needs its document alive
     instructions = pikepdf.parse_content_stream(pikepdf.Stream(pdf, ops.encode()))
     assert _openness(instructions, 0, len(instructions) - 1) == expected
+
+
+def test_many_short_lines_ask_for_a_look(make):
+    # ten tiny open strokes, like illustration detail, and one rule
+    tiny = b" ".join(f"{100 + 5 * i} 100 m {101 + 5 * i} 100 l S".encode() for i in range(10))
+    p = propose(make(b"0 0 0 1 K 0.03 w " + tiny + b" 100 150 m 250 150 l S"))
+    assert "10 of them are under 1 mm long" in p.reasons[0][1] and "compare Before and After" in p.reasons[0][1]
+
+
+def test_rules_alone_do_not_ask(make):
+    p = propose(make(b"0 0 0 1 K 0.1 w 100 100 m 200 100 l S"))
+    assert "under 1 mm" not in p.reasons[0][1]

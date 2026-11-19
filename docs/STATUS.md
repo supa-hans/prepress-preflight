@@ -819,8 +819,11 @@ Results:
     10 mm long) and thickening them still shows grey rims. A minimum length
     does not separate them: at 3 mm, 58 lines remain and rims still show. No
     rule based on shape or length tells an illustrator's strokes from rules,
-    so on this kind of file the preview is the judge. Open question for the
-    owner: how such files should be handled.
+    so on this kind of file the preview is the judge. Owner's decision
+    (2026-11-19): the preview decides. The fix stays suggested; when over a
+    quarter of a page's lines are under 1 mm long, the proposal says so and
+    asks for a Before/After look before keeping it (Little Stars page 8: 233
+    of 360).
 
 Speed: the bracketing now counts every form's uses in one walk and parses each
 stream once (Little Stars proposal: 50 s, then 9.5 s, which is three walks of
