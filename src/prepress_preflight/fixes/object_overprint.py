@@ -18,6 +18,8 @@ Refused, rather than changing more than was asked:
 """
 from __future__ import annotations
 
+from collections import Counter
+
 import pikepdf
 
 from ..checks.base import Options
@@ -42,29 +44,33 @@ def parse_object(text) -> tuple[int, int]:
 
 
 class _FormCounter(PageWalker):
-    """A page walk that counts how often one form is painted."""
+    """A page walk that counts how often each form is painted."""
 
-    def __init__(self, page, objgen):
+    def __init__(self, page, counts):
         super().__init__(page)
-        self.objgen, self.count = objgen, 0
+        self.counts = counts
 
     def _do(self, name, st, resources, depth, located, idx):
         try:
-            if resources["/XObject"][str(name)].objgen == self.objgen:
-                self.count += 1
+            xobj = resources["/XObject"][str(name)]
+            if str(xobj.get("/Subtype")) == "/Form":
+                self.counts[xobj.objgen] += 1
         except Exception:
             pass
         super()._do(name, st, resources, depth, located, idx)
 
 
-def _form_uses(pdf, objgen) -> int:
-    """How many times a form is painted across the document."""
-    total = 0
+def form_use_counts(pdf) -> Counter:
+    """How many times each form is painted across the document, by object."""
+    counts: Counter = Counter()
     for page in pdf.pages:
-        walker = _FormCounter(page, objgen)
-        walker.run()
-        total += walker.count
-    return total
+        _FormCounter(page, counts).run()
+    return counts
+
+
+def _form_uses(pdf, objgen) -> int:
+    """How many times one form is painted across the document."""
+    return form_use_counts(pdf)[objgen]
 
 
 def _snapshot(pdf, page_number, number):

@@ -13,6 +13,7 @@ from .rename_spot import propose_rename_spot, write_rename_spot
 from .scale import propose_scale, write_scale
 from .spot_to_cmyk import propose_spot_to_cmyk, write_spot_to_cmyk
 from .set_boxes import propose_set_boxes, write_set_boxes
+from .thicken_hairlines import propose_thicken_hairlines, write_thicken_hairlines
 from .trim_from_marks import propose_trim_from_marks, write_trim_from_marks
 
 FIXES = {
@@ -26,6 +27,7 @@ FIXES = {
     "object-overprint": (propose_object_overprint, write_object_overprint),
     "knock-out-white": (propose_knock_out_white, write_knock_out_white),
     "registration-to-black": (propose_registration_to_black, write_registration_to_black),
+    "thicken-hairlines": (propose_thicken_hairlines, write_thicken_hairlines),
 }
 
 # Fixes aimed at one object of one file: they make no sense in a saved action list.

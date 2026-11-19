@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 import pikepdf
 
 from ..content import PageWalker
-from .object_overprint import PATH_BUILD, _form_uses, _unique
+from .object_overprint import PATH_BUILD, _unique, form_use_counts
 from .spot_to_cmyk import _flate
 
 PATH_PAINT = {"f", "F", "f*", "S", "s", "B", "B*", "b", "b*"}
@@ -41,6 +41,7 @@ class Spot:
     resources: object
     found: list  # [(page number, Snapshot, flagged)] every candidate painted here
     clipped: bool = False
+    instructions: list = field(default_factory=list)  # the stream's instructions, parsed once
 
     @property
     def flagged(self):
@@ -92,23 +93,25 @@ def find_spots(pdf, select, flag, plan: Plan, every_use: bool = False,
             key = ("form", snap.chain[-1].xobj.objgen) if snap.chain else ("page", number)
             positions[(key, snap.index)].append((number, snap, bool(verdict)))
 
-    spots, uses_cache = [], {}
+    spots, uses_cache, parsed = [], None, {}
     for (key, index), found in positions.items():
         if not any(f for _, _, f in found):
             continue
         stream = found[0][1].stream
-        instructions = pikepdf.parse_content_stream(stream)
+        if key not in parsed:
+            parsed[key] = pikepdf.parse_content_stream(stream)
+        instructions = parsed[key]
         op = str(instructions[index].operator)
         start = index
         if op in PATH_PAINT:
             while start > 0 and str(instructions[start - 1].operator) in PATH_BUILD:
                 start -= 1
         spot = Spot(key, index, start, op, stream, found[0][1].resources, found,
-                    any(str(i.operator) in ("W", "W*") for i in instructions[start:index]))
+                    any(str(i.operator) in ("W", "W*") for i in instructions[start:index]), instructions)
         if key[0] == "form":
-            if key not in uses_cache:
-                uses_cache[key] = _form_uses(pdf, key[1])
-            uses = uses_cache[key]
+            if uses_cache is None:
+                uses_cache = form_use_counts(pdf)  # one walk for every form
+            uses = uses_cache[key[1]]
             per_paint = Counter(s.event.paint for _, s, _ in found)
             flagged_per_paint = Counter(s.event.paint for _, s in spot.flagged)
             if max(per_paint.values()) < uses:
@@ -191,3 +194,22 @@ def write_plan(pdf, plan: Plan):
             new["/Resources"] = new_res
             changes[stream.objgen] = new
     return changes, additions
+
+
+def checked_pages(path, options) -> dict:
+    """Each page's geometry exactly as the checks see it: {number: PageInfo},
+    with the trim taken from the crop marks where they disagree with the trim box."""
+    from ..document import Document
+    from ..content import walk_page
+    from ..marks import infer_trim
+
+    doc = Document(path)
+    try:
+        pages = {}
+        for page in doc.pages:
+            infer_trim(page, walk_page(page.obj), options.size_tolerance_mm)
+            page.obj = None  # the pikepdf objects close with the document; keep only the geometry
+            pages[page.number] = page
+        return pages
+    finally:
+        doc.close()

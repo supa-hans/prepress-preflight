@@ -24,11 +24,9 @@ from ..checks.base import Options
 from ..checks.registration import INSET_PT
 from ..checks.white_overprint import LABELS
 from ..content import CMYK, walk_page
-from ..document import Document
-from ..marks import infer_trim
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, add_edit, find_spots, ins, known, write_plan
+from .bracket import Plan, add_edit, checked_pages, find_spots, ins, known, write_plan
 from .spot_to_cmyk import _num
 
 NAME = "registration-to-black"
@@ -43,15 +41,7 @@ def _tint(e) -> float:
 
 
 def _trims(path, options):
-    doc = Document(path)
-    try:
-        trims = {}
-        for page in doc.pages:
-            infer_trim(page, walk_page(page.obj), options.size_tolerance_mm)
-            trims[page.number] = page.trim
-        return trims
-    finally:
-        doc.close()
+    return {n: page.trim for n, page in checked_pages(path, options).items()}
 
 
 def _analyse(pdf, trims) -> Plan:

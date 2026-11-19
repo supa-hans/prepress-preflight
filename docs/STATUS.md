@@ -797,9 +797,36 @@ has its colour, place and overprint unchanged.
 No sample has registration inside the trim (all 14 pass that check), so this
 is tested on synthetic files only so far.
 
-Next candidates on the same mechanism: thicken hairlines to 0.25 pt (the
-Hairlines warn); then other single-object edits (remove, recolour), when
-wanted.
+## Thicken hairlines (added 2026-11-19)
+
+`thicken-hairlines` sets lines the Hairlines check reports to 0.25 pt as
+printed (each at its own scale), and the app suggests it on that warning.
+Same choice of lines as the check (white, dielines and anything outside the
+print area left out). A form drawn at different sizes would need a different
+width at each use, so it is left and reported.
+
+Owner's decision (2026-11-19): only open lines. Outlines of closed shapes
+(rectangles, paths closed with h/s/b, paths ending where they started), paths
+mixing both, and outlined text are left and listed in the preview.
+
+Results:
+  * Wobbler: its one line (1.98 mm long, 0.23 pt) thickened; check passes.
+  * Catalogue: 68 rules on pages 46-47 (3.3-10 mm long) thickened; check passes.
+  * Little Stars: the "hairlines" are 0.03 pt strokes in an RGB illustration
+    (a zebra on page 8, built from thousands of tiny shapes). Thickening all
+    of them added grey rims and white notches to the stripes. Open lines only
+    leaves 436 closed outlines, but 392 open strokes remain (0.02 mm to over
+    10 mm long) and thickening them still shows grey rims. A minimum length
+    does not separate them: at 3 mm, 58 lines remain and rims still show. No
+    rule based on shape or length tells an illustrator's strokes from rules,
+    so on this kind of file the preview is the judge. Open question for the
+    owner: how such files should be handled.
+
+Speed: the bracketing now counts every form's uses in one walk and parses each
+stream once (Little Stars proposal: 50 s, then 9.5 s, which is three walks of
+about 3 s).
+
+Next: other single-object edits (remove, recolour), when wanted.
 
 ## Next tasks, in order
 
