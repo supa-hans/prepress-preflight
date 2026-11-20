@@ -54,10 +54,12 @@ def add_step_options(parser) -> None:
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
     parser.add_argument("--expect", metavar="TEXT", help="object-overprint: refuse unless the object is still this one")
     parser.add_argument("--profile", metavar="NAME|PATH",
-                        help="rgb-to-cmyk: the CMYK profile to convert to: fogra39 (default), gracol2006, swop, "
+                        help="rgb-to-cmyk, set-output-intent: the CMYK profile: fogra39 (default), gracol2006, swop, "
                              "or the path to an .icc file")
     parser.add_argument("--near-black-to-k", action="store_true",
                         help="rgb-to-cmyk: near-black text and vectors (neutral, no channel above 10%%) become K100 "
                              "too; by default only pure black does")
+    parser.add_argument("--replace", action="store_true",
+                        help="set-output-intent: replace an output intent the file already states")
     parser.add_argument("--marks", action="store_true",
                         help="add-bleed: add trim marks outside the bleed box, replacing any existing ones")

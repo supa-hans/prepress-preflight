@@ -97,7 +97,7 @@ def _settings(ns):
     options = Options(min_bleed_mm=ns.min_bleed, expected_trim_mm=ns.trim, bound=ns.bound)
     extra = dict(method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode, spots=ns.spot,
                  target=ns.target, overprint=ns.overprint, expect=ns.expect, profile=ns.profile,
-                 near_black=ns.near_black_to_k)
+                 near_black=ns.near_black_to_k, replace=ns.replace)
     return options, extra
 
 

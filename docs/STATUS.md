@@ -971,6 +971,22 @@ expected.json (owner's go-ahead, 2026-11-20): the upscaled sample now expects
 status WARN and an Image detail warn, keeping its "no Image resolution warn"
 rule. Backup: samples/expected.before-image-detail.json.
 
+## Set the output intent (added 2026-11-20)
+
+`set-output-intent` says which print condition the file's CMYK was made for,
+for a RIP or a PDF/X workflow: an output intent (/S /GTS_PDFX, ICC registry)
+with the profile embedded, by default Coated FOGRA39 (identifier FOGRA39);
+gracol2006 (CGATS TR 006), swop (CGATS TR 001) or a custom .icc as for
+rgb-to-cmyk. My calls: it does not claim PDF/X conformance (that needs far
+more); a file that already states an output intent is left alone, and said so,
+unless --replace; only the document catalogue changes. It is not suggested
+automatically (the "no output intent" note is on almost every sample), but it
+chains: `rgb-to-cmyk+set-output-intent`.
+
+Brochure cover, `rgb-to-cmyk+set-output-intent --compact`: from WARN (RGB) to
+PASS on every check, stating Coated FOGRA39, 6.0 MB. A4 PBR (already GRACoL
+2013) is left alone.
+
 ## Speed: what was measured (2026-11-20)
 
 Full preflight takes about 15 s on the banner and on the catalogue. Profiled:

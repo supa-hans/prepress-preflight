@@ -9,6 +9,7 @@ from .add_bleed import propose_add_bleed, propose_add_marks, write_add_bleed
 from .knock_out_white import propose_knock_out_white, write_knock_out_white
 from .object_overprint import propose_object_overprint, write_object_overprint
 from .registration_to_black import propose_registration_to_black, write_registration_to_black
+from .output_intent import propose_set_output_intent, write_set_output_intent
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .rgb_to_cmyk import propose_rgb_to_cmyk, write_rgb_to_cmyk
 from .scale import propose_scale, write_scale
@@ -30,6 +31,7 @@ FIXES = {
     "registration-to-black": (propose_registration_to_black, write_registration_to_black),
     "thicken-hairlines": (propose_thicken_hairlines, write_thicken_hairlines),
     "rgb-to-cmyk": (propose_rgb_to_cmyk, write_rgb_to_cmyk),
+    "set-output-intent": (propose_set_output_intent, write_set_output_intent),
 }
 
 # Fixes aimed at one object of one file: they make no sense in a saved action list.
