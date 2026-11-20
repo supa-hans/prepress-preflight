@@ -11,6 +11,7 @@
 | Bleed artwork | fail | Artwork reaches the trim (ink within 0.5 mm of it) and does not carry on 3 mm past it |
 | RGB | warn | Any RGB object. Common in print files; never a fail |
 | White overprint | fail | Always |
+| Black overprint | note | 100% black (C0 M0 Y0 K100 or a Black separation) text up to 12 pt or line up to 2 pt that knocks out, or overprints in mode 0 (which overprints nothing in CMYK). The overprint-black fix uses the same rules |
 | Registration inside trim | fail | Always. Outside the trim is fine |
 | Blend modes | note | Listed quietly; common in print files |
 | Blend over same ink | fail | A Multiply, Darken or ColorBurn object lies over the same process ink and the two stack to 200% (solid on solid), over at least 1 mm² |
@@ -1037,8 +1038,18 @@ On the samples: Tempest label 6 objects, Wobblers 7, catalogue 14 (its other
 and verified, each in under 3 s. The yearbook's text is RGB, so
 `rgb-to-cmyk+overprint-black --compact` converts it first (526 pure blacks
 become K100) and then overprints the small ones on seven pages: 21 s in all,
-verified. No check reports knocked-out black yet, so the app does not suggest
-this fix; choose it in Propose.
+verified.
+
+**The Black overprint check (added 2026-11-20)** notes the same objects, so
+the app now suggests overprint-black. A note, not a warning: on white paper
+knocking out does no harm, and some jobs want it, so it never changes a
+file's status (all 14 sample statuses unchanged). On the samples: Tempest 6
+lines, Wobblers 4 lines and 3 text, catalogue 5 lines on page 4 and 3 on
+page 5, X-am posters 202 text. The catalogue showed the fix had counted 14:
+the other 6 are copies off the page in artwork placed across a spread (the
+same form drawn on pages 4 and 5). The fix still changes them, since they are
+the same instruction as the visible copy and nothing printed changes, but now
+lists them apart, so its counts match the check's.
 
 ## Set the output intent (added 2026-11-20)
 

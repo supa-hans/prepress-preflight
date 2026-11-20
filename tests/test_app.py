@@ -481,3 +481,9 @@ def test_recolour_an_object_chosen_in_the_inspector(app, make, tmp_path):
     post(base, "/api/export", {"path": str(dst), "confirm": True})
     with pikepdf.open(dst) as pdf:
         assert [e.colour for e in walk_page(pdf.pages[0]).events] == [(0.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 0.0)]
+
+
+def test_black_that_knocks_out_suggests_overprinting_it(app, make):
+    report = wait_report(app(make(b"0 0 0 1 K 0.5 w 60 60 m 300 60 l S")))["report"]
+    i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Black overprint")
+    assert report["suggestions"][i] == ["overprint-black"]

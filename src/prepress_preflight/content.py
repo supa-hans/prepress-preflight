@@ -70,7 +70,7 @@ class Event:
     """One painted object."""
 
     __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width",
-                 "font", "blend", "groups", "ref")
+                 "font", "blend", "groups", "ref", "size")
 
     def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
                  width=None, font=None, blend="Normal", groups=(), ref=None):
@@ -98,6 +98,7 @@ class Event:
         # Multiply group is painted Normal but still multiplies on the page.
         self.groups = groups
         self.ref = ref  # (object number, generation) of the image XObject, images only
+        self.size = None  # text only: the font size as placed on the page, in points
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -316,9 +317,13 @@ class PageWalker:
             font = str(st.font.get("/BaseFont", "/(unnamed)"))[1:]
             if len(font) > 7 and font[6] == "+":
                 font = font[7:]  # drop the subset tag
-        self._append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
-                           parts if located else None, self._loc(st, located), width, font, st.bm,
-                           tuple((f.name, f.blend) for f in self._chain), ref), st, resources)
+        event = Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
+                      parts if located else None, self._loc(st, located), width, font, st.bm,
+                      tuple((f.name, f.blend) for f in self._chain), ref)
+        if kind == "text":
+            a, b, c, d = mat_mul(st.tm, st.ctm)[:4]
+            event.size = st.fsize * math.sqrt(abs(a * d - b * c))
+        self._append(event, st, resources)
 
     def _append(self, event, st, resources):
         number = len(self.out.events)

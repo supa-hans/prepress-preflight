@@ -27,62 +27,42 @@ and said so:
 """
 from __future__ import annotations
 
-import math
 from collections import Counter
 
 import pikepdf
 
 from ..checks.base import Options
+from ..checks.black_overprint import MAX_LINE_PT, MAX_TEXT_PT, grey_black as _grey_black, is_black, is_small, knocks_out
 from ..checks.white_overprint import LABELS
-from ..content import CMYK, mat_mul, walk_page
+from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
 from .bracket import Plan, add_edit, find_spots, ins, known, write_plan
 
 NAME = "overprint-black"
 FILL_AND_STROKE = {"B", "B*", "b", "b*"}
-MAX_TEXT_PT = 12.0
-MAX_LINE_PT = 2.0
+OFF = " off the page"
 NAMES = {("path", "fill"): "shape(s)", ("path", "stroke"): "line(s)", ("text", "fill"): "text object(s)",
          ("text", "stroke"): "outlined text object(s)"}
 
 
-def _black(e) -> bool:
-    if not e.colour:
-        return False
-    if e.cs == CMYK:
-        return len(e.colour) == 4 and max(e.colour[:3]) <= 0.001 and e.colour[3] >= 0.999
-    return e.cs.kind == "sep" and e.cs.names == ("Black",) and e.colour[0] >= 0.999
-
-
-def _grey_black(e) -> bool:
-    return e.cs.kind == "gray" and bool(e.colour) and e.colour[0] <= 0.001
-
-
 def _candidate(e) -> bool:
-    return e.kind in ("path", "text") and (_black(e) or _grey_black(e))
+    return e.kind in ("path", "text") and (is_black(e) or _grey_black(e))
 
 
-def text_size(state) -> float:
-    a, b, c, d = mat_mul(state.tm, state.ctm)[:4]
-    return state.fsize * math.sqrt(abs(a * d - b * c))
-
-
-def _small(snap, max_text, max_line) -> bool:
-    e = snap.event
-    if e.kind == "text":
-        return text_size(snap.state) <= max_text
-    return e.paint == "stroke" and e.width is not None and e.width <= max_line
+def _on_media(b, m) -> bool:
+    return b[0] < m[2] and b[2] > m[0] and b[1] < m[3] and b[3] > m[1]
 
 
 def _analyse(pdf, max_text, max_line) -> Plan:
     plan = Plan()
+    media = {n: [float(v) for v in page.mediabox] for n, page in enumerate(pdf.pages, 1)}
 
     def flag(number, snap):
         e = snap.event
-        if e.overprint and (e.cs != CMYK or e.opm == 1):
+        if not knocks_out(e):
             return False  # already overprints as intended
-        if not _small(snap, max_text, max_line):
+        if not is_small(e, max_text, max_line):
             return False
         if _grey_black(e):
             return "black in grey (DeviceGray): RIPs differ on whether it overprints the CMY beneath; convert it to CMYK first"
@@ -114,6 +94,14 @@ def _analyse(pdf, max_text, max_line) -> Plan:
                  lambda add_gs, v=set_gs: [ins("gs", pikepdf.Name(add_gs(v)))],
                  lambda add_gs, v=back: [ins("gs", pikepdf.Name(add_gs(v)))],
                  lambda e: NAMES[(e.kind, e.paint)])
+        for n, s in spot.flagged:  # a copy off the page (artwork spread over two pages) changes nothing printed
+            if s.event.bbox is not None and not _on_media(s.event.bbox, media[n]):
+                label = NAMES[(s.event.kind, s.event.paint)]
+                plan.fixed[n][label] -= 1
+                plan.fixed[n][label + OFF] += 1
+    for counts in plan.fixed.values():
+        for label in [k for k, v in counts.items() if v <= 0]:
+            del counts[label]
     plan.targets.sort()
     return plan
 
@@ -138,9 +126,15 @@ def propose_overprint_black(path: str, options: Options | None = None, max_text=
     with pikepdf.open(path) as pdf:
         plan = _analyse(pdf, max_text, max_line)
     for page in sorted(plan.fixed):
-        proposal.reasons.append((page, f"Sets 100% black to overprint (mode 1): {_count_text(plan.fixed[page])}, "
-                                       f"text up to {max_text:g} pt and lines up to {max_line:g} pt. They will print "
-                                       "on top of the colour beneath, so misregistration cannot show a halo."))
+        on = Counter({k: v for k, v in plan.fixed[page].items() if not k.endswith(OFF)})
+        off = Counter({k[:-len(OFF)]: v for k, v in plan.fixed[page].items() if k.endswith(OFF)})
+        text = (f"Sets 100% black to overprint (mode 1): {_count_text(on)} (text up to {max_text:g} pt, lines up to "
+                f"{max_line:g} pt). They will print on top of the colour beneath, so misregistration cannot show a halo."
+                if on else "Sets 100% black to overprint (mode 1), with no change to what prints on this page.")
+        if off:
+            text += (f" Also {_count_text(off)} off the page, in artwork placed on another page too, changed with it "
+                     "(nothing printed here changes).")
+        proposal.reasons.append((page, text))
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} small black object(s) left knocking out: {reason}"))

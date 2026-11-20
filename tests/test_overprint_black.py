@@ -74,3 +74,40 @@ def test_nothing_to_do_and_saved_lists(make):
     assert parse_steps("overprint-black --max-text 10")  # allowed in a saved action list
     with pytest.raises(ValueError, match="negative"):
         propose(src, max_text=-1)
+
+
+# ---- the check that reports it ------------------------------------------------
+
+from prepress_preflight.engine import run  # noqa: E402
+
+
+def black_findings(result):
+    return [f for f in result.findings if f.check == "Black overprint"]
+
+
+def test_check_notes_small_black_that_knocks_out_and_nothing_else(make):
+    gs = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1), "/GS1": pikepdf.Dictionary(OP=True, op=True, OPM=0)}
+    src = make(b"BT /F1 9 Tf 0 0 0 1 k 100 100 Td (ko) Tj ET "                 # knocks out: noted
+               b"q /GS1 gs BT /F1 9 Tf 0 0 0 1 k 100 120 Td (mode0) Tj ET Q "  # overprint in mode 0: noted
+               b"q /GS0 gs BT /F1 9 Tf 0 0 0 1 k 100 140 Td (op) Tj ET Q "     # overprints: fine
+               b"BT /F1 36 Tf 0 0 0 1 k 100 160 Td (BIG) Tj ET "              # large: fine
+               b"0 0 0 1 K 0.5 w 60 60 m 300 60 l S",                          # thin rule: noted
+               font={"/F1": font}, extgstate=gs)
+    result = run(src)
+    (f,) = black_findings(result)
+    assert f.severity == "note" and "2 text object(s), 1 line(s)" in f.message
+    assert len(f.locations) == 3
+    after = propose(src)
+    assert "2 text object(s), 1 line(s)" in after.reasons[0][1]  # the fix takes exactly what the check noted
+
+
+def test_check_is_silent_once_fixed(make, tmp_path):
+    src, dst, _ = fixed(make, tmp_path, b"BT /F1 9 Tf 0 0 0 1 k 100 100 Td (ko) Tj ET")
+    assert black_findings(run(src)) and not black_findings(run(dst))
+
+
+def test_copies_off_the_page_are_counted_apart(make):
+    src = make(b"0 0 0 1 K 0.5 w 60 60 m 300 60 l S -300 60 m -100 60 l S", font={"/F1": font})
+    text = propose(src).reasons[0][1]
+    assert ": 1 line(s) (text up to" in text and "Also 1 line(s) off the page" in text
+    assert "1 line(s)" in black_findings(run(src))[0].message  # the check sees only the one on the page

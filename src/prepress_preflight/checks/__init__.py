@@ -6,6 +6,7 @@ from .bleed_artwork import BleedArtworkCheck
 from .safe_margin import SafeMarginCheck
 from .rgb import RGBCheck
 from .white_overprint import WhiteOverprintCheck
+from .black_overprint import BlackOverprintCheck
 from .registration import RegistrationCheck
 from .blend_modes import BlendModeCheck
 from .blend_over_ink import BlendOverInkCheck
@@ -29,6 +30,7 @@ ALL_CHECKS = [
     SafeMarginCheck,
     RGBCheck,
     WhiteOverprintCheck,
+    BlackOverprintCheck,
     RegistrationCheck,
     BlendModeCheck,
     BlendOverInkCheck,
