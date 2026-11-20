@@ -127,6 +127,7 @@ before.
 | Bleed artwork | fail | Wherever artwork reaches the trim (ink of 5% or more within 0.5 mm), ink must carry on 3 mm past it. Catches clipped artwork, short bleed, gaps, and bleed on some edges only. |
 | RGB | warn | Any RGB or Lab object in the printed area. Never a fail. |
 | White overprint | fail | Any white object set to overprint. |
+| Black overprint | note | 100% black text up to 12 pt or line up to 2 pt that knocks out instead of overprinting. |
 | Registration inside trim | fail | Registration colour inside the trim box. Outside the trim it is expected (printer's marks). |
 | Blend modes | note | Lists blend modes in use. |
 | Blend over same ink | fail / warn / note | A Multiply, Darken or ColorBurn object lying over the same process ink. Fails when the two stack to 200% (solid on solid), warns past 100%, notes below that. Overlaps under 1 mm² are ignored. |
