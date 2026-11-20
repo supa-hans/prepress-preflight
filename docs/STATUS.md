@@ -971,6 +971,21 @@ expected.json (owner's go-ahead, 2026-11-20): the upscaled sample now expects
 status WARN and an Image detail warn, keeping its "no Image resolution warn"
 rule. Backup: samples/expected.before-image-detail.json.
 
+## Speed: what was measured (2026-11-20)
+
+Full preflight takes about 15 s on the banner and on the catalogue. Profiled:
+on the banner half the time is the edge strips, rendered separately by the
+bleed and safe-margin checks, each render decoding its 106-megapixel photo; on
+the catalogue it is spread over Blend over same ink (4.9 s), Image detail
+(4.7 s) and the edge strips (3 s).
+
+Tried and rejected: one wide render per edge, cropped for each check. A crop is
+not the same as a direct render: 87 of 296 strips across the samples differed,
+by up to 38 levels (MuPDF's rendering depends on the clip it is given, likely
+how it samples large images), so sharing renders would change bleed and margin
+measurements. No change made. Any speed-up must keep each check's pixels
+identical, or be recalibrated against the samples.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
