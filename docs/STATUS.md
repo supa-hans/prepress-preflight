@@ -967,6 +967,10 @@ judged once however often it is placed. Too few edges to judge (a smooth sky,
 a flat tint): no verdict. Unreadable: "could not check". Cost: the yearbook's
 preflight 2.7 s to 4.9 s.
 
+expected.json (owner's go-ahead, 2026-11-20): the upscaled sample now expects
+status WARN and an Image detail warn, keeping its "no Image resolution warn"
+rule. Backup: samples/expected.before-image-detail.json.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
