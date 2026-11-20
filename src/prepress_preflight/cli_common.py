@@ -53,6 +53,10 @@ def add_step_options(parser) -> None:
                         help="object-overprint, remove-object, recolour-object: the object, as the app's inspector numbers it, e.g. 48:2439")
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
     parser.add_argument("--expect", metavar="TEXT", help="object-overprint, remove-object, recolour-object: refuse unless the object is still this one")
+    parser.add_argument("--max-text", type=float, metavar="PT",
+                        help="overprint-black: black text up to this size as placed is set to overprint (default 12)")
+    parser.add_argument("--max-line", type=float, metavar="PT",
+                        help="overprint-black: black lines up to this weight are set to overprint (default 2)")
     parser.add_argument("--cmyk", metavar="C,M,Y,K",
                         help="recolour-object: the new colour in percent, e.g. 0,0,0,100")
     parser.add_argument("--profile", metavar="NAME|PATH",

@@ -1010,6 +1010,36 @@ set to M100, both verified, about 2 s each. The render differs only inside
 the text's own box (78 pixels at 100 dpi). The first text run tried was
 refused, correctly: it is inside a form painted three times.
 
+## Overprint black (added 2026-11-20)
+
+`overprint-black` sets small 100% black text and thin black lines to
+overprint. Why: black that knocks out leaves a gap in the colour beneath, and
+a fraction of a millimetre of misregistration shows it as a halo along fine
+type and rules. Overprinting is the usual pre-press rule for small black, and
+InDesign's [Black] swatch does it by default.
+
+Rules (my call, recorded here): C0 M0 Y0 K100, or a Separation named Black at
+100%. Text up to 12 pt as placed (font size times the text and page scaling)
+and stroked lines up to 2 pt; `--max-text` and `--max-line` change both. Large
+black is left knocking out, because 100% K alone overprinting a photo lets the
+photo show through. Rich black is not touched. The overprint mode is set to 1
+as well: with mode 0 a CMYK object's 0% C, M and Y still knock out, so
+overprint would do nothing. Black in DeviceGray is listed and left (RIPs
+differ on whether grey overprints the CMY beneath); convert it first. Each
+object is bracketed as in knock-out-white; a filled and stroked path where only
+one side is small black is left if the other side already overprints. Allowed
+in saved action lists. Verified against every object in the file: only the
+targets' overprint changed, and each now overprints in mode 1 (a mode change
+on an object that does not overprint has no effect and is allowed).
+
+On the samples: Tempest label 6 objects, Wobblers 7, catalogue 14 (its other
+1,622 small black objects already overprint), X-am posters 202. All written
+and verified, each in under 3 s. The yearbook's text is RGB, so
+`rgb-to-cmyk+overprint-black --compact` converts it first (526 pure blacks
+become K100) and then overprints the small ones on seven pages: 21 s in all,
+verified. No check reports knocked-out black yet, so the app does not suggest
+this fix; choose it in Propose.
+
 ## Set the output intent (added 2026-11-20)
 
 `set-output-intent` says which print condition the file's CMYK was made for,

@@ -39,6 +39,8 @@
       fields: [] },
     "knock-out-white": { help: "Knocks out every white object set to overprint (white overprint does not print). Only those objects change.",
       fields: [] },
+    "overprint-black": { help: "Sets small 100% black (K100) text and thin black lines to overprint, so misregistration cannot show a halo around them. Large black is left knocking out, so photos do not show through it.",
+      fields: [["max-text", "Text up to (pt)", "number", "12"], ["max-line", "Lines up to (pt)", "number", "2"]] },
     "object-overprint": { help: "Sets overprint on or off for one object. Easiest from Inspect: click the page, choose the object, and use its button.",
       fields: [["object", "Object (page:number)", "text", "", "48:2439"],
                ["overprint", "Overprint", "select", "off", ["off", "on"], ["Off (knock out)", "On"]],
