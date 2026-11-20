@@ -50,9 +50,9 @@ def add_step_options(parser) -> None:
                         help="rename-spot: OLD=NEW, rename a spot or merge it into one already in the file; "
                              "spot-to-cmyk: the spot to convert (default: all). Repeatable")
     parser.add_argument("--object", dest="target", metavar="PAGE:NUMBER",
-                        help="object-overprint: the object, as the app's inspector numbers it, e.g. 48:2439")
+                        help="object-overprint, remove-object: the object, as the app's inspector numbers it, e.g. 48:2439")
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
-    parser.add_argument("--expect", metavar="TEXT", help="object-overprint: refuse unless the object is still this one")
+    parser.add_argument("--expect", metavar="TEXT", help="object-overprint, remove-object: refuse unless the object is still this one")
     parser.add_argument("--profile", metavar="NAME|PATH",
                         help="rgb-to-cmyk, set-output-intent: the CMYK profile: fogra39 (default), gracol2006, swop, "
                              "or the path to an .icc file")

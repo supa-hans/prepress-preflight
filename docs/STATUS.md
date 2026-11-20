@@ -971,6 +971,21 @@ expected.json (owner's go-ahead, 2026-11-20): the upscaled sample now expects
 status WARN and an Image detail warn, keeping its "no Image resolution warn"
 rule. Backup: samples/expected.before-image-detail.json.
 
+## Remove one object (added 2026-11-20)
+
+`remove-object`, from the object details' Remove… button (or `--object
+PAGE:NUMBER`): the second object edit. How each kind is removed so nothing
+after it changes: a path's painting operator becomes `n` (the path is still
+built, so a clip set with it holds; a path both filled and stroked loses only
+the chosen side, B to S or f); a text run is shown in the invisible render
+mode with the mode in force put back right after (deleting the Tj would move
+every later run in the block); an image or gradient's Do/sh is removed.
+Refused like object-overprint: forms painted more than once, pattern cells,
+an object that no longer matches what was chosen, saved action lists.
+Verified: the page paints exactly the same objects less the one removed.
+Catalogue page 48, the white "GREY" run removed: 2533 objects to 2532,
+verified.
+
 ## Set the output intent (added 2026-11-20)
 
 `set-output-intent` says which print condition the file's CMYK was made for,

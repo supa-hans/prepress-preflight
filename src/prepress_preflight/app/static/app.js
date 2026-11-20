@@ -43,6 +43,9 @@
       fields: [["object", "Object (page:number)", "text", "", "48:2439"],
                ["overprint", "Overprint", "select", "off", ["off", "on"], ["Off (knock out)", "On"]],
                ["expect", "Must still be (filled in for you)", "text", ""]] },
+    "remove-object": { help: "Removes one object. Easiest from Inspect: click the page, choose the object, and use its Remove button.",
+      fields: [["object", "Object (page:number)", "text", "", "48:2439"],
+               ["expect", "Must still be (filled in for you)", "text", ""]] },
   };
 
   async function api(path, opts = {}) {
@@ -503,7 +506,16 @@
       field("expect").value = d.fingerprint;
       preview();
     };
-    box.append(b);
+    const remove = document.createElement("button");
+    remove.textContent = "Remove…";
+    remove.onclick = () => {
+      chooseFix("remove-object");
+      const field = (name) => $("fix-fields").querySelector(`[data-name="${name}"]`);
+      field("object").value = `${state.page}:${d.id}`;
+      field("expect").value = d.fingerprint;
+      preview();
+    };
+    box.append(b, remove);
     return box;
   }
 
