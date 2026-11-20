@@ -18,6 +18,7 @@
 | Blend over same ink | note | As above, staying within 100% |
 | Total ink | fail | Over the limit across at least 1 mm², or any vector or text object coloured over it. Limit is `--ink-limit`, default 400% until the press limit is known |
 | Image resolution | warn | Under 150 ppi. 300 preferred; large format may sit lower |
+| Image detail | warn | An image at 150 ppi or more whose edges are as soft as an image enlarged about 2x or more (edge sharpness under 0.38); reports the real detail in ppi |
 | Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
 | Font embedding | fail | A font used for visible text is not embedded |
@@ -929,39 +930,42 @@ Yearbook after rgb-to-cmyk: 172 MB normal, 123 MB compact (the original is
 50 MB), written and verified in 16 s. What remains is CMYK photos being larger
 than RGB JPEGs.
 
-## Investigation: upscaled images (2026-11-20, not built)
+## Image detail: enlarged images (added 2026-11-20)
 
-The sample "BONUS - FAKE LOW RES … upscaled" passes, as agreed in
-expected.json (its pixel count is genuinely 300 ppi), but its photo was
-enlarged about 4.6x from a 66 ppi original, so it prints soft. No check
-catches that. I tried a deterministic measure (no AI vision): edge sharpness,
-the 99th percentile of |gradient| / local contrast over pixels on real edges,
-which is about 1 / edge width in pixels.
+The sample "BONUS - FAKE LOW RES … upscaled" passed every check (its pixel
+count really is 300 ppi), but its photo was enlarged about 4.6x from a 66 ppi
+original, so it prints soft. The new Image detail check (warn) finds that by
+measurement, not AI vision: the sharpness of an image's strongest edges for its
+resolution, the 99th percentile of |gradient| / local contrast (11 px window)
+over pixels on real edges, sampled in a 3 x 3 grid of tiles. That is about
+1 / edge width in pixels: an enlarged image spreads every edge wider.
 
-What held up (greyscale and RGB):
-  * Calibration by enlarging genuine sample photos by known factors (bicubic
-    then JPEG q85): native 0.46-0.56, 2x 0.31-0.41, 3x 0.26-0.34, 4x 0.23-0.29
-    (7 px window). Sharpness falls about as 1/sqrt(enlargement).
-  * All 195 genuine images that the samples paint and the measure could judge
-    scored 0.42 or more, so a 0.35 threshold would flag none of them. (A first
-    survey of every image object found low scores, but those were 15 images
-    the catalogue carries and never paints.)
-  * Cost after replacing PIL's rank filters with numpy maxima: the yearbook's
-    preflight 2.7 s -> 3.6 s.
+Pixels are decoded by MuPDF, as they print. This was the hard part: Pillow's
+raw reading of the sample's Adobe CMYK JPEG (APP14 transform 2) came back
+inverted (K mean 235 of 255, against 20 as MuPDF decodes it and as the page
+renders), which first hid the fault entirely. MuPDF applies both the JPEG's
+Adobe transform and any /Decode array (as rgb-to-cmyk writes).
 
-What did not hold up, so it was not shipped:
-  * The upscaled sample itself got no verdict. Its CMYK JPEG reads back from
-    Pillow almost black (K mean 235 of 255): most likely Adobe's inverted CMYK
-    convention, which has to be read from the file (APP14 marker and /Decode),
-    not guessed. Turning CMYK into lightness also matters: adding K to CMY
-    clipped dark areas flat; a multiplicative model put one genuine catalogue
-    CMYK photo at 0.32, a false warning.
-  * Images with few strong edges need a coverage rule (the fake has edges,
-    but too few pixels cleared the edge threshold in a 3 x 3 grid of tiles).
+Calibration (samples, 2026-11-20): every one of the 199 genuine images the
+samples paint that could be judged scored 0.436 or more. Genuine RGB and CMYK
+photos enlarged by known factors (bicubic, then JPEG): 1.5x 0.37-0.47, 2x
+0.29-0.38, 3x 0.25-0.31, 4x 0.18-0.26. Threshold 0.38 (about 2x or more);
+real detail estimated as ppi / (0.47 / score)^2.
 
-To finish it: decode CMYK JPEGs with their inversion handled explicitly,
-recalibrate on CMYK, and add CMYK enlargements to the calibration. The draft
-check is not in the repository.
+Results: the upscaled sample is flagged as "1 image (placed 9 times) … enlarged
+5x, roughly 63 ppi of real detail, not 300" (truth: 4.6x, 66 ppi). The
+catalogue gains one warning, page 7: an 844 x 612 photo at 273 ppi estimated at
+91 ppi of real detail; I looked at it, and it is visibly mushy (smeared
+lettering, blocky compression), a true positive. Nothing else in the samples is
+flagged. A deliberately motion-blurred catalogue photo is not flagged (0.44):
+it keeps crisp edges across the blur, so soft photography passes and missing
+resolution does not.
+
+Scope: only images at the minimum resolution or more (lower ones are Image
+resolution's), at least 300,000 pixels, inside the printed area; each image
+judged once however often it is placed. Too few edges to judge (a smooth sky,
+a flat tint): no verdict. Unreadable: "could not check". Cost: the yearbook's
+preflight 2.7 s to 4.9 s.
 
 ## Next tasks, in order
 

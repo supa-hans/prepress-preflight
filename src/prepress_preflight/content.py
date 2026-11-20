@@ -70,10 +70,10 @@ class Event:
     """One painted object."""
 
     __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width",
-                 "font", "blend", "groups")
+                 "font", "blend", "groups", "ref")
 
     def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
-                 width=None, font=None, blend="Normal", groups=()):
+                 width=None, font=None, blend="Normal", groups=(), ref=None):
         self.kind = kind  # path | text | image | imagemask | shading
         self.paint = paint  # fill | stroke
         self.cs = cs
@@ -97,6 +97,7 @@ class Event:
         # of the group): a group is blended as a whole, so an object inside a
         # Multiply group is painted Normal but still multiplies on the page.
         self.groups = groups
+        self.ref = ref  # (object number, generation) of the image XObject, images only
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -298,7 +299,7 @@ class PageWalker:
         return UNKNOWN
 
     # ---- events --------------------------------------------------------
-    def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None):
+    def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None, ref=None):
         if cs is None:
             cs, colour, pat = (st.fcs, st.fcol, st.fpat) if paint == "fill" else (st.scs, st.scol, st.spat)
             if cs.kind == "pattern":
@@ -317,7 +318,7 @@ class PageWalker:
                 font = font[7:]  # drop the subset tag
         self._append(Event(kind, paint, cs, colour, bbox if located else None, overprint, st.opm, px, ppi,
                            parts if located else None, self._loc(st, located), width, font, st.bm,
-                           tuple((f.name, f.blend) for f in self._chain)), st, resources)
+                           tuple((f.name, f.blend) for f in self._chain), ref), st, resources)
 
     def _append(self, event, st, resources):
         number = len(self.out.events)
@@ -613,7 +614,8 @@ class PageWalker:
                 cs = self.resolve_cs(xobj.get("/ColorSpace"), resources)
                 if cs.kind == "unknown":
                     self.out.problems["image colour space could not be read"] += 1
-                self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs)
+                self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs,
+                           ref=xobj.objgen if xobj.is_indirect else None)
             self._blend_end(mark)
         elif subtype == "/Form":
             key = xobj.objgen

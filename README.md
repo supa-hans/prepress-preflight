@@ -128,6 +128,7 @@ before.
 | Blend over same ink | fail / warn / note | A Multiply, Darken or ColorBurn object lying over the same process ink. Fails when the two stack to 200% (solid on solid), warns past 100%, notes below that. Overlaps under 1 mm² are ignored. |
 | Total ink | fail | Fails when at least 1 mm² inside the trim is over the limit (`--ink-limit`, default 400%), or any vector or text object is coloured over it. Reports the peak and the area over the limit. |
 | Image resolution | warn | Images under 150 ppi at their placed size. Notes images between 150 and 300 ppi. |
+| Image detail | warn | Images enlarged from smaller ones (or soft): they pass the resolution check but print soft. Measured from edge sharpness; reports roughly how many ppi of real detail they hold. |
 | Safe margin | warn | Live text within 1.5 mm of the trim (`--safe-margin`) or crossing it, and artwork that close to a white edge without reaching it. |
 | Hairlines | warn | Stroked lines thinner than 0.25 pt as placed on the page. White lines and non-printing spots are left out. |
 | Font embedding | fail | A font used for visible text is not embedded. |

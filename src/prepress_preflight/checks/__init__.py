@@ -11,6 +11,7 @@ from .blend_modes import BlendModeCheck
 from .blend_over_ink import BlendOverInkCheck
 from .total_ink import TotalInkCheck
 from .resolution import ImageResolutionCheck
+from .image_detail import ImageDetailCheck
 from .hairlines import HairlineCheck
 from .fonts import FontEmbeddingCheck
 from .trim_marks import TrimMarkCheck
@@ -33,6 +34,7 @@ ALL_CHECKS = [
     BlendOverInkCheck,
     TotalInkCheck,
     ImageResolutionCheck,
+    ImageDetailCheck,
     HairlineCheck,
     FontEmbeddingCheck,
     TrimMarkCheck,
