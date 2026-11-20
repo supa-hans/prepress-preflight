@@ -10,6 +10,7 @@ from .knock_out_white import propose_knock_out_white, write_knock_out_white
 from .object_overprint import propose_object_overprint, write_object_overprint
 from .registration_to_black import propose_registration_to_black, write_registration_to_black
 from .output_intent import propose_set_output_intent, write_set_output_intent
+from .recolour_object import propose_recolour_object, write_recolour_object
 from .remove_object import propose_remove_object, write_remove_object
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .rgb_to_cmyk import propose_rgb_to_cmyk, write_rgb_to_cmyk
@@ -34,9 +35,10 @@ FIXES = {
     "rgb-to-cmyk": (propose_rgb_to_cmyk, write_rgb_to_cmyk),
     "set-output-intent": (propose_set_output_intent, write_set_output_intent),
     "remove-object": (propose_remove_object, write_remove_object),
+    "recolour-object": (propose_recolour_object, write_recolour_object),
 }
 
 # Fixes aimed at one object of one file: they make no sense in a saved action list.
-ONE_FILE_ONLY = {"object-overprint", "remove-object"}
+ONE_FILE_ONLY = {"object-overprint", "remove-object", "recolour-object"}
 
 __all__ = ["FIXES", "ONE_FILE_ONLY", "Proposal"]

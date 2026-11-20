@@ -270,6 +270,7 @@ def object_details(pdf_page, mu_page, number: int, trim=None) -> dict:
     out["fingerprint"] = fingerprint(e)
     out["overprint_now"] = st.op_fill if e.paint == "fill" else st.op_stroke
     out["editable"] = e.loc is not None
+    out["recolourable"] = e.kind in ("path", "text", "imagemask")  # images and gradients carry their own colours
     try:
         ins = pikepdf.parse_content_stream(snap.stream)[snap.index]
         op, operands = str(ins.operator), ins.operands

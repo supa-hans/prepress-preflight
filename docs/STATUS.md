@@ -986,6 +986,30 @@ Verified: the page paints exactly the same objects less the one removed.
 Catalogue page 48, the white "GREY" run removed: 2533 objects to 2532,
 verified.
 
+## Recolour one object (added 2026-11-20)
+
+`recolour-object`, from the object details' Recolour… button (or `--object
+PAGE:NUMBER --cmyk C,M,Y,K`, percent): the third object edit. Colour is
+graphics state that later objects inherit, so the object is wrapped in
+`q <k or K> … Q`. In a text block (no q/Q allowed) or around a path that also
+clips (Q would drop the clip), the new colour is set just before and the
+colour in force is written back straight after, exactly as the file had it:
+the same colour space resource and values (a spot stays that spot).
+
+Only the chosen side changes (a path filled and stroked keeps its other
+side). Overprint is kept, and the proposal says so when the object
+overprints, because with CMYK a 0% ink then leaves what is beneath. Shapes,
+text and stencil masks only: images and gradients carry their own colours.
+Refused like the other object edits: forms painted more than once, pattern
+cells, an object that no longer matches, saved action lists, or a colour it
+already has. Verified: every object on the page is unchanged except the
+chosen one, which is now that CMYK.
+
+Catalogue page 48: a line (C50 M40 Y40 K4) and a white text run (object 6)
+set to M100, both verified, about 2 s each. The render differs only inside
+the text's own box (78 pixels at 100 dpi). The first text run tried was
+refused, correctly: it is inside a form painted three times.
+
 ## Set the output intent (added 2026-11-20)
 
 `set-output-intent` says which print condition the file's CMYK was made for,

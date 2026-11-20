@@ -461,3 +461,23 @@ def test_remove_an_object_chosen_in_the_inspector(app, make, tmp_path):
     post(base, "/api/export", {"path": str(dst), "confirm": True})
     with pikepdf.open(dst) as pdf:
         assert [e.colour for e in walk_page(pdf.pages[0]).events] == [(0.0, 0.0, 0.0, 1.0)]
+
+
+def test_recolour_an_object_chosen_in_the_inspector(app, make, tmp_path):
+    import pikepdf
+    from prepress_preflight.content import walk_page
+    base = app(make(b"0 0 0 1 k 100 100 100 100 re f 1 0 0 0 k 120 120 20 20 re f"))
+    wait_report(base)
+    height = MEDIA[3] - MEDIA[1]
+    hit = json.loads(get(base, f"/api/objects?n=1&x=130&y={height - 130}")[2])["objects"][0]
+    d = json.loads(get(base, f"/api/object?n=1&id={hit['id']}")[2])["object"]
+    assert d["recolourable"]
+    post(base, "/api/preview", {"fix": "recolour-object",
+                                "options": ["--object", f"1:{d['id']}", "--cmyk", "0,100,0,0", "--expect", d["fingerprint"]]})
+    preview = wait_preview(base)["preview"]
+    assert preview["error"] is None and "to C0 M100 Y0 K0" in preview["reasons"][0]["text"]
+    post(base, "/api/keep", {})
+    dst = tmp_path / "out.pdf"
+    post(base, "/api/export", {"path": str(dst), "confirm": True})
+    with pikepdf.open(dst) as pdf:
+        assert [e.colour for e in walk_page(pdf.pages[0]).events] == [(0.0, 0.0, 0.0, 1.0), (0.0, 1.0, 0.0, 0.0)]

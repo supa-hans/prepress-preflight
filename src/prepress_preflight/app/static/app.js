@@ -46,6 +46,10 @@
     "remove-object": { help: "Removes one object. Easiest from Inspect: click the page, choose the object, and use its Remove button.",
       fields: [["object", "Object (page:number)", "text", "", "48:2439"],
                ["expect", "Must still be (filled in for you)", "text", ""]] },
+    "recolour-object": { help: "Gives one object a new CMYK colour (percent, e.g. 0,0,0,100). Easiest from Inspect: click the page, choose the object, and use its Recolour button. Overprint stays as it is.",
+      fields: [["object", "Object (page:number)", "text", "", "48:2439"],
+               ["cmyk", "New colour C,M,Y,K (%)", "text", "", "0,0,0,100"],
+               ["expect", "Must still be (filled in for you)", "text", ""]] },
   };
 
   async function api(path, opts = {}) {
@@ -516,6 +520,18 @@
       preview();
     };
     box.append(b, remove);
+    if (d.recolourable) {
+      const recolour = document.createElement("button");
+      recolour.textContent = "Recolour…";
+      recolour.onclick = () => {
+        chooseFix("recolour-object");
+        const field = (name) => $("fix-fields").querySelector(`[data-name="${name}"]`);
+        field("object").value = `${state.page}:${d.id}`;
+        field("expect").value = d.fingerprint;
+        field("cmyk").focus();
+      };
+      box.append(recolour);
+    }
     return box;
   }
 
