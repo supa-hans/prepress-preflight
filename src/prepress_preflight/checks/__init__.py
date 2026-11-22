@@ -7,6 +7,7 @@ from .safe_margin import SafeMarginCheck
 from .rgb import RGBCheck
 from .white_overprint import WhiteOverprintCheck
 from .black_overprint import BlackOverprintCheck
+from .small_text_inks import SmallTextInksCheck
 from .registration import RegistrationCheck
 from .blend_modes import BlendModeCheck
 from .blend_over_ink import BlendOverInkCheck
@@ -31,6 +32,7 @@ ALL_CHECKS = [
     RGBCheck,
     WhiteOverprintCheck,
     BlackOverprintCheck,
+    SmallTextInksCheck,
     RegistrationCheck,
     BlendModeCheck,
     BlendOverInkCheck,

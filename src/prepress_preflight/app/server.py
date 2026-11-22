@@ -484,6 +484,8 @@ def suggest(report: dict) -> list[list[str]]:
             fixes.append("thicken-hairlines")
         elif check == "White overprint":
             fixes.append("knock-out-white")
+        elif check == "Small text inks" and sev == WARN:
+            fixes.append("rich-black-text")
         elif check == "Black overprint":
             fixes.append("overprint-black")
         elif check == "Page size" and sev == WARN and "does not match the expected" in msg:

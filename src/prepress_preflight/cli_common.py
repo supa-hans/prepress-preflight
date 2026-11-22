@@ -54,7 +54,8 @@ def add_step_options(parser) -> None:
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")
     parser.add_argument("--expect", metavar="TEXT", help="object-overprint, remove-object, recolour-object: refuse unless the object is still this one")
     parser.add_argument("--max-text", type=float, metavar="PT",
-                        help="overprint-black: black text up to this size as placed is set to overprint (default 12)")
+                        help="overprint-black: black text up to this size as placed is set to overprint (default 12); "
+                             "rich-black-text: rich-black text up to this size becomes K100 (default 8)")
     parser.add_argument("--max-line", type=float, metavar="PT",
                         help="overprint-black: black lines up to this weight are set to overprint (default 2)")
     parser.add_argument("--cmyk", metavar="C,M,Y,K",

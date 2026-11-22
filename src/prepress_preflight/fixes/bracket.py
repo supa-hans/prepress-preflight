@@ -145,6 +145,36 @@ def add_edit(plan: Plan, spot: Spot, before, after, label) -> None:
         plan.fixed[n][label(s.event)] += 1
 
 
+def recolour(plan: Plan, spot: Spot, new: dict, label) -> bool:
+    """Record an edit giving the spot's flagged sides new CMYK colours: {"fill"|"stroke": (c, m, y, k)}.
+    Where the old colour must be put back explicitly, it is written as the file had it
+    (same colour space resource, same values), which needs it to be the same at every use.
+    False, with nothing recorded, when it is not."""
+    from .spot_to_cmyk import _num
+    before = [ins("k" if side == "fill" else "K", *[_num(v) for v in cmyk]) for side, cmyk in new.items()]
+    after = []
+    if spot.restore:
+        for side in new:
+            def written(s, side=side):
+                d = s.state.fdef if side == "fill" else s.state.sdef
+                cs = s.state.fcs if side == "fill" else s.state.scs
+                return (str(d[0]) if d else None, cs.kind, tuple(s.state.fcol if side == "fill" else s.state.scol))
+            old = known(spot, written)
+            if old is None:
+                return False
+            name, kind, values = old
+            if name is None:
+                op = {"gray": "g", "rgb": "rg", "cmyk": "k"}.get(kind)
+                if op is None:
+                    return False
+                after.append(ins(op if side == "fill" else op.upper(), *[_num(v) for v in values]))
+            else:
+                after += [ins("cs" if side == "fill" else "CS", pikepdf.Name(name)),
+                          ins("scn" if side == "fill" else "SCN", *[_num(v) for v in values])]
+    add_edit(plan, spot, lambda add_gs, b=before: list(b), lambda add_gs, a=after: list(a), label)
+    return True
+
+
 def ins(op, *operands):
     return pikepdf.ContentStreamInstruction(list(operands), pikepdf.Operator(op))
 

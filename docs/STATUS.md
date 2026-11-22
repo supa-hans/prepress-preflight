@@ -12,6 +12,8 @@
 | RGB | warn | Any RGB object. Common in print files; never a fail |
 | White overprint | fail | Always |
 | Black overprint | note | 100% black (C0 M0 Y0 K100 or a Black separation) text up to 12 pt or line up to 2 pt that knocks out, or overprints in mode 0 (which overprints nothing in CMYK). The overprint-black fix uses the same rules |
+| Small text inks | warn | Text up to 8 pt as placed in rich black (K 85% or more with any C, M or Y at 10% or more): it should be K only |
+| Small text inks | note | Other text up to 8 pt in three or more inks (10% or more each); may be a deliberate brand colour |
 | Registration inside trim | fail | Always. Outside the trim is fine |
 | Blend modes | note | Listed quietly; common in print files |
 | Blend over same ink | fail | A Multiply, Darken or ColorBurn object lies over the same process ink and the two stack to 200% (solid on solid), over at least 1 mm² |
@@ -1050,6 +1052,34 @@ the other 6 are copies off the page in artwork placed across a spread (the
 same form drawn on pages 4 and 5). The fix still changes them, since they are
 the same instruction as the visible copy and nothing printed changes, but now
 lists them apart, so its counts match the check's.
+
+## Small text in several inks, and rich black text to K (added 2026-11-23)
+
+Each ink is its own plate, and plates land a fraction of a millimetre apart.
+Fine type built from several inks blurs and grows coloured fringes; one ink
+prints it sharp. The Small text inks check (my call on the rules, recorded
+in the table above) warns on small rich black, which is meant to read as
+black and is cleanest as K alone, and notes other small text in three or
+more inks, which is often a deliberate brand build. Small is 8 pt as placed
+(text events now carry their placed size); an ink counts at 10%. Invisible
+OCR text is ignored. CMYK only.
+
+Measured first on the samples: only the catalogue and the X-am posters have
+small text in several inks. The catalogue has 525 runs of up to 8 pt in
+C75 M68 Y67 K90 (300% ink on fine type: warn, pages with the spec tables) and
+about 400 in C100 M69 Y0 K11 and other 3-ink builds (notes). The X-am posters
+have 30 in C57 M49 Y48 K15, a dark grey build (note). Both files already fail,
+so no status changed.
+
+`rich-black-text` makes the warned text C0 M0 Y0 K100 (`--max-text`, default
+8). Only the colour changes; overprint stays (chain overprint-black after it
+to overprint the new black). Bracketed like the other object fixes; in text
+blocks the colour in force is written back exactly as the file had it,
+spot or device colour. The colour restore is now shared with
+registration-to-black, which also gains device-colour restores (it used to
+refuse them). Verified against every object in the file. Catalogue: 525 text
+objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
+are gone and the 9 notes remain. The app suggests the fix for the warning.
 
 ## Set the output intent (added 2026-11-20)
 

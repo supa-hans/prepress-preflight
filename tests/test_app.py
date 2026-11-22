@@ -487,3 +487,11 @@ def test_black_that_knocks_out_suggests_overprinting_it(app, make):
     report = wait_report(app(make(b"0 0 0 1 K 0.5 w 60 60 m 300 60 l S")))["report"]
     i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Black overprint")
     assert report["suggestions"][i] == ["overprint-black"]
+
+
+def test_small_rich_black_text_suggests_making_it_k(app, make):
+    import pikepdf
+    font = lambda pdf: pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica)
+    report = wait_report(app(make(b"BT /F1 7 Tf 0.75 0.68 0.67 0.9 k 100 100 Td (x) Tj ET", font={"/F1": font})))["report"]
+    i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Small text inks")
+    assert report["suggestions"][i] == ["rich-black-text"]

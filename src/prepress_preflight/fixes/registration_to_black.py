@@ -26,8 +26,7 @@ from ..checks.white_overprint import LABELS
 from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, add_edit, checked_pages, find_spots, ins, known, write_plan
-from .spot_to_cmyk import _num
+from .bracket import Plan, checked_pages, find_spots, recolour, write_plan
 
 NAME = "registration-to-black"
 
@@ -65,25 +64,9 @@ def _analyse(pdf, trims) -> Plan:
 
     for spot in find_spots(pdf, _registration, flag, plan, every_use=True,
                            elsewhere="in a form that is also used outside the trim"):
-        sides = {s.event.paint: _tint(s.event) for _, s in spot.flagged}
-        before = [ins("k" if side == "fill" else "K", *[_num(v) for v in (0, 0, 0, t)]) for side, t in sides.items()]
-        after, ok = [], True
-        if spot.restore:
-            # put back the colour as written: the colour space resource and its tint
-            for side in sides:
-                def written(s, side=side):
-                    d = s.state.fdef if side == "fill" else s.state.sdef
-                    return (str(d[0]) if d else None, tuple(s.state.fcol if side == "fill" else s.state.scol))
-                old = known(spot, written)
-                if old is None or old[0] is None:
-                    ok = False
-                    break
-                after += [ins("cs" if side == "fill" else "CS", pikepdf.Name(old[0])),
-                          ins("scn" if side == "fill" else "SCN", *[_num(v) for v in old[1]])]
-        if not ok:
+        sides = {s.event.paint: (0, 0, 0, _tint(s.event)) for _, s in spot.flagged}
+        if not recolour(plan, spot, sides, lambda e: LABELS[e.kind]):
             plan.leave(spot, "in a form whose uses disagree on colour")
-            continue
-        add_edit(plan, spot, lambda add_gs, b=before: list(b), lambda add_gs, a=after: list(a), lambda e: LABELS[e.kind])
     plan.targets.sort()
     return plan
 
