@@ -1066,7 +1066,7 @@ OCR text is ignored. CMYK only.
 
 Measured first on the samples: only the catalogue and the X-am posters have
 small text in several inks. The catalogue has 525 runs of up to 8 pt in
-C75 M68 Y67 K90 (300% ink on fine type: warn, pages with the spec tables) and
+C75 M68 Y67 K90 (300% ink on fine type: warn) and
 about 400 in C100 M69 Y0 K11 and other 3-ink builds (notes). The X-am posters
 have 30 in C57 M49 Y48 K15, a dark grey build (note). Both files already fail,
 so no status changed.
