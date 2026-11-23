@@ -51,6 +51,8 @@ def add_step_options(parser) -> None:
     parser.add_argument("--spot", action="append", metavar="SPOT",
                         help="rename-spot: OLD=NEW, rename a spot or merge it into one already in the file; "
                              "spot-to-cmyk: the spot to convert (default: all). Repeatable")
+    parser.add_argument("--layer", action="append", metavar="NAME",
+                        help="remove-layer: the layer to remove (default: every hidden layer). Repeatable")
     parser.add_argument("--object", dest="target", metavar="PAGE:NUMBER",
                         help="object-overprint, remove-object, recolour-object: the object, as the app's inspector numbers it, e.g. 48:2439")
     parser.add_argument("--overprint", choices=("on", "off"), help="object-overprint: overprint on or off")

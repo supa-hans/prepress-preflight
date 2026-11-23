@@ -554,3 +554,15 @@ def test_annotations_suggest_flattening_or_removing(app, make, tmp_path):
     report = wait_report(app(path))["report"]
     got = {f["severity"]: s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Annotations"}
     assert got == {"warn": ["flatten-annotations", "remove-annotations"], "note": ["remove-annotations"]}
+
+
+def test_layers_suggest_removing_one(app, make):
+    import pikepdf
+    path = make(b"0 0 0 1 k 30 30 20 20 re f")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        g = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.OCG, Name=pikepdf.String("Template")))
+        pdf.Root["/OCProperties"] = pikepdf.Dictionary(OCGs=[g], D=pikepdf.Dictionary(OFF=[g]))
+        pdf.save(path)
+    report = wait_report(app(path))["report"]
+    got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Layers"]
+    assert got == [["remove-layer"]]

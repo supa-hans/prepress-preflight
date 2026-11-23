@@ -99,7 +99,7 @@ def _settings(ns):
     extra = dict(ink_limit=ns.ink_limit, method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode, spots=ns.spot,
                  target=ns.target, overprint=ns.overprint, expect=ns.expect, profile=ns.profile,
                  near_black=ns.near_black_to_k, replace=ns.replace, cmyk=ns.cmyk,
-                 max_text=ns.max_text, max_line=ns.max_line)
+                 max_text=ns.max_text, max_line=ns.max_line, layer=ns.layer)
     return options, extra
 
 

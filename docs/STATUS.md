@@ -1082,6 +1082,41 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Remove a layer (added 2026-11-23)
+
+`remove-layer --layer NAME` (repeatable; default: every hidden layer) takes
+what is on a layer off the page and removes the layer from the file. The
+Layers check had no fix; the app now offers this one for both its findings.
+
+Layer content cannot simply be cut out. In both layered samples (Illustrator)
+a saved graphics state (q) opened on the first layer is closed on the second,
+so the layers' sections are not self-contained. So the fix keeps every
+instruction that sets state and takes only the painting out, as remove-object
+does: paths end with `n` (a clip still applies), images, gradients and forms
+go, text is shown invisibly with the render mode put back. The layer's
+BDC/EMC markers go, and the layer leaves the layer list (the list goes with
+the last one). Placed objects and annotations on the layer go too.
+
+All or nothing: if any page cannot be done (the layer inside a placed form,
+or mixed with other layers in an OCMD) nothing is changed, since a page left
+holding the layer's content would print it once the layer is gone.
+
+Verified by rendering each changed page against a scratch copy of the original
+whose default layer settings switch the layer off. MuPDF's own `set_layer`
+call was tried first and silently changed nothing on the samples, so it is
+not used.
+
+On the samples:
+- **Pull-up banner, "Skoop Template":** 48 objects off. The layer holds the
+  crop marks, and the banner's trim box (859.8 × 2114.8 mm) is wrong; only the
+  marks give the real 845 × 2100 mm. Removing the layer alone therefore turns
+  Bleed box and Bleed artwork into fails. The proposal now says so whenever
+  the marks are on the layer and the trim box disagrees with them, and
+  `trim-from-marks+remove-layer` gives the right trim with the template gone
+  (the remaining fail is the known Multiply). Written and verified.
+- **Tempest label, "Marks & Bleeds":** 2 objects off (its crop marks, which
+  agree with the trim box, so no warning). Written and verified.
+
 ## Flatten or remove annotations (added 2026-11-23)
 
 Two fixes for the Annotations warning, which until now had none. A RIP may

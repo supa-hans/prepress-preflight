@@ -530,6 +530,8 @@ def suggest(report: dict) -> list[list[str]]:
             fixes += ["flatten-annotations", "remove-annotations"]
         elif check == "Annotations":
             fixes.append("remove-annotations")
+        elif check == "Layers":
+            fixes.append("remove-layer")
         elif check == "Black overprint":
             fixes.append("overprint-black")
         elif check == "Page size" and sev == WARN and "does not match the expected" in msg:

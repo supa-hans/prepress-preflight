@@ -45,6 +45,8 @@
       fields: [["max-text", "Text up to (pt)", "number", "8"]] },
     "overprint-black": { help: "Sets small 100% black (K100) text and thin black lines to overprint, so misregistration cannot show a halo around them. Large black is left knocking out, so photos do not show through it.",
       fields: [["max-text", "Text up to (pt)", "number", "12"], ["max-line", "Lines up to (pt)", "number", "2"]] },
+    "remove-layer": { help: "Takes everything on a layer off the page and removes the layer, e.g. a supplier's template layer. Leave the name empty to remove every hidden layer. Checked against the original rendered with that layer switched off.",
+      fields: [["layer", "Layers to remove (one per line; empty for every hidden layer)", "lines", ""]] },
     "flatten-annotations": { help: "Draws each annotation set to print, form fields included, into the page as it looks now, then takes it off the page, so what prints no longer depends on the RIP. Annotations not set to print are left.",
       fields: [] },
     "remove-annotations": { help: "Takes every comment, stamp and form field off the page, printing or not. The artwork is untouched; links are kept.",
