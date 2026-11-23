@@ -10,6 +10,7 @@ from .black_overprint import BlackOverprintCheck
 from .small_text_inks import SmallTextInksCheck
 from .registration import RegistrationCheck
 from .blend_modes import BlendModeCheck
+from .transparency import TransparencyCheck
 from .blend_over_ink import BlendOverInkCheck
 from .total_ink import TotalInkCheck
 from .resolution import ImageResolutionCheck
@@ -35,6 +36,7 @@ ALL_CHECKS = [
     SmallTextInksCheck,
     RegistrationCheck,
     BlendModeCheck,
+    TransparencyCheck,
     BlendOverInkCheck,
     TotalInkCheck,
     ImageResolutionCheck,

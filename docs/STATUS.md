@@ -16,6 +16,7 @@
 | Small text inks | note | Other text up to 8 pt in three or more inks (10% or more each); may be a deliberate brand colour |
 | Registration inside trim | fail | Always. Outside the trim is fine |
 | Blend modes | note | Listed quietly; common in print files |
+| Transparency | note | Objects under 100% opacity (and invisible ones at 0%), under a soft mask, or images with an alpha channel. Listed, never judged: it depends on the RIP, and PDF/X-1a allows none |
 | Blend over same ink | fail | A Multiply, Darken or ColorBurn object lies over the same process ink and the two stack to 200% (solid on solid), over at least 1 mm² |
 | Blend over same ink | warn | As above, stacking past 100% |
 | Blend over same ink | note | As above, staying within 100% |
@@ -1080,6 +1081,22 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## Transparency (added 2026-11-23)
+
+The Transparency check lists live transparency other than blend modes:
+objects drawn under 100% opacity, under a soft mask, and images with their
+own alpha channel. The RIP has to flatten these where they overlap artwork;
+modern RIPs do it well, older ones crudely, and a job supplied as PDF/X-1a
+may have none. A note only, since whether it matters depends on the printer.
+Painted objects now carry their opacity and soft mask (and images whether
+they have alpha), gradients included.
+
+On the samples: 7 of 14 files have some. The yearbook's are black picture-frame
+boxes at opacity 0 (placeholders from the layout tool; they print nothing),
+counted apart as invisible objects. The catalogue has soft-masked images on
+page 4, the Wobblers soft masks and alpha images, Little Stars alpha images
+and invisible objects. No status changed.
 
 ## Watched folder (added 2026-11-23)
 

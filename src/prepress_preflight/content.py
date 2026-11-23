@@ -70,7 +70,7 @@ class Event:
     """One painted object."""
 
     __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width",
-                 "font", "blend", "groups", "ref", "size")
+                 "font", "blend", "groups", "ref", "size", "opacity", "smask", "alpha")
 
     def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
                  width=None, font=None, blend="Normal", groups=(), ref=None):
@@ -99,6 +99,9 @@ class Event:
         self.groups = groups
         self.ref = ref  # (object number, generation) of the image XObject, images only
         self.size = None  # text only: the font size as placed on the page, in points
+        self.opacity = 1.0  # constant opacity in force for this side (ca for fill, CA for stroke)
+        self.smask = False  # a soft mask in force (from the graphics state)
+        self.alpha = False  # images only: the image carries its own soft mask (an alpha channel)
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -300,7 +303,8 @@ class PageWalker:
         return UNKNOWN
 
     # ---- events --------------------------------------------------------
-    def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None, ref=None):
+    def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None, ref=None,
+              alpha=False):
         if cs is None:
             cs, colour, pat = (st.fcs, st.fcol, st.fpat) if paint == "fill" else (st.scs, st.scol, st.spat)
             if cs.kind == "pattern":
@@ -323,9 +327,12 @@ class PageWalker:
         if kind == "text":
             a, b, c, d = mat_mul(st.tm, st.ctm)[:4]
             event.size = st.fsize * math.sqrt(abs(a * d - b * c))
+        event.alpha = alpha
         self._append(event, st, resources)
 
     def _append(self, event, st, resources):
+        event.opacity = st.ca if event.paint == "fill" else st.CA  # every event, gradients included
+        event.smask = st.smask
         number = len(self.out.events)
         if self.detail is not None and (self.detail(event) if callable(self.detail) else number == self.detail):
             snap = Snapshot(event, st.copy(), resources, self._stream, self._idx, tuple(self._chain), number)
@@ -620,7 +627,8 @@ class PageWalker:
                 if cs.kind == "unknown":
                     self.out.problems["image colour space could not be read"] += 1
                 self._emit("image", "fill", st, bbox, resources, located, px=(w, h), ppi=ppi, cs=cs,
-                           ref=xobj.objgen if xobj.is_indirect else None)
+                           ref=xobj.objgen if xobj.is_indirect else None,
+                           alpha="/SMask" in xobj or int(xobj.get("/SMaskInData", 0)) > 0)
             self._blend_end(mark)
         elif subtype == "/Form":
             key = xobj.objgen
