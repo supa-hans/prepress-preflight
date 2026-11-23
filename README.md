@@ -142,6 +142,7 @@ before.
 | White overprint | fail | Any white object set to overprint. |
 | Black overprint | note | 100% black text up to 12 pt or line up to 2 pt that knocks out instead of overprinting. |
 | Small text inks | warn / note | Text up to 8 pt in rich black (warn: it should be K only), or in three or more inks (note). |
+| Reversed small text | warn / note | White text knocked out of two or more inks (measured on the plates): up to 7 pt warns, 7 to 10 pt is a note. |
 | Transparency | note | Objects under 100% opacity or a soft mask, and images with alpha: flattened by the RIP; none allowed in PDF/X-1a. |
 | Registration inside trim | fail | Registration colour inside the trim box. Outside the trim it is expected (printer's marks). |
 | Blend modes | note | Lists blend modes in use. |

@@ -14,6 +14,8 @@
 | Black overprint | note | 100% black (C0 M0 Y0 K100 or a Black separation) text up to 12 pt or line up to 2 pt that knocks out, or overprints in mode 0 (which overprints nothing in CMYK). The overprint-black fix uses the same rules |
 | Small text inks | warn | Text up to 8 pt as placed in rich black (K 85% or more with any C, M or Y at 10% or more): it should be K only |
 | Small text inks | note | Other text up to 8 pt in three or more inks (10% or more each); may be a deliberate brand colour |
+| Reversed small text | warn | White text up to 7 pt as placed, knocked out of two or more printing plates at 30% or more each (measured on the separations, spots included) |
+| Reversed small text | note | The same from 7 up to 10 pt |
 | Registration inside trim | fail | Always. Outside the trim is fine |
 | Blend modes | note | Listed quietly; common in print files |
 | Transparency | note | Objects under 100% opacity (and invisible ones at 0%), under a soft mask, or images with an alpha channel. Listed, never judged: it depends on the RIP, and PDF/X-1a allows none |
@@ -1082,6 +1084,31 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## Reversed small text (added 2026-11-24)
+
+White type is bare paper left in every plate behind it. Out of a background
+of two or more inks, the gap has to line up on each plate, so misregistration
+pushes one ink into the letters and fine strokes fill in; on one ink there is
+nothing to misregister. The check measures the background on the separated
+plates (so overprint and spot inks count as they print, non-printing spots
+do not), as the 90th percentile of each plate inside the text's box, since
+the letters themselves are bare paper. Thresholds, chosen from the samples
+(owner left the call to Claude): warn up to 7 pt as placed, note from 7 to
+10 pt, an ink counting at 30% or more. Font weight is not judged.
+
+Pages are rendered at 100 dpi only when they hold small white text: a 6 pt
+text box is still about 9 pixels tall there, and 200 dpi gave the same
+findings (one borderline note fewer at 100) at three times the cost. It adds
+about 2.4 s to the 56-page catalogue.
+
+On the samples only the catalogue has any: 15 runs at 6.2 and 6.5 pt out of
+C100 M69 on pages 4 and 5 (the "Optimum" lines on the blue panels, checked
+by eye: white sans on a two-ink blue) are a warning, and 129 runs at 7.4 to
+10 pt (mostly white 8 pt footers out of C94 M66) are a note. The X-am
+posters' small white text all sits on one ink or paper. No status changed
+(the catalogue already fails). No fix: the remedies (larger or bolder type, a
+one-ink background, or a stroke of the background colour) are design changes.
 
 ## Remove private data (added 2026-11-24)
 

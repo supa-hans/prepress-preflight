@@ -8,6 +8,7 @@ from .rgb import RGBCheck
 from .white_overprint import WhiteOverprintCheck
 from .black_overprint import BlackOverprintCheck
 from .small_text_inks import SmallTextInksCheck
+from .reversed_text import ReversedTextCheck
 from .registration import RegistrationCheck
 from .blend_modes import BlendModeCheck
 from .transparency import TransparencyCheck
@@ -34,6 +35,7 @@ ALL_CHECKS = [
     WhiteOverprintCheck,
     BlackOverprintCheck,
     SmallTextInksCheck,
+    ReversedTextCheck,
     RegistrationCheck,
     BlendModeCheck,
     TransparencyCheck,
