@@ -18,6 +18,7 @@ from .output_intent import propose_set_output_intent, write_set_output_intent
 from .recolour_object import propose_recolour_object, write_recolour_object
 from .reduce_ink import propose_reduce_ink, write_reduce_ink
 from .remove_layer import propose_remove_layer, write_remove_layer
+from .remove_private_data import propose_remove_private_data, write_remove_private_data
 from .remove_object import propose_remove_object, write_remove_object
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .rich_black_text import propose_rich_black_text, write_rich_black_text
@@ -50,6 +51,7 @@ FIXES = {
     "remove-annotations": (propose_remove_annotations, write_remove_annotations),
     "downsample-images": (propose_downsample_images, write_downsample_images),
     "remove-layer": (propose_remove_layer, write_remove_layer),
+    "remove-private-data": (propose_remove_private_data, write_remove_private_data),
     "remove-object": (propose_remove_object, write_remove_object),
     "recolour-object": (propose_recolour_object, write_recolour_object),
 }

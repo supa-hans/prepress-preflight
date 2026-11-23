@@ -1083,6 +1083,31 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Remove private data (added 2026-11-24)
+
+`remove-private-data` takes out page-piece data (PieceInfo) on pages, placed
+forms and the catalogue: the second, complete copy of the artwork Illustrator
+stores when "Preserve Illustrator Editing Capabilities" is on, and InDesign's
+small marker. Nothing in it prints. After it, Illustrator opens the file as
+plain PDF objects rather than the original artwork, which the proposal says.
+The saving shows only with `--compact`, since a normal write appends to the
+original bytes. Thumbnails and XMP metadata are not touched.
+
+Verified: no page-piece data left, every changed object is the original minus
+that one entry (a test refuses a write that drops one more key), and form
+content is byte for byte the same.
+
+On the samples (all written with `--compact`, every report identical before
+and after, originals unchanged):
+- Illustrator files: banner 509 to 266 MB (243 MB of private data in about
+  3,700 chunks), bag label 0.9 to 0.1 MB, Tempest label 0.4 to under 0.05 MB,
+  the upscaled sample 1.5 to 0.8 MB, Wobblers 1.2 to 0.8 MB.
+- InDesign files: only a marker; the small savings (catalogue 51.2 to
+  49.9 MB) come from compacting, not from this fix (compacting the catalogue
+  alone gives 49.7 MB).
+- `remove-private-data+downsample-images --max-ppi 200 --to-ppi 150` takes the
+  banner from 509.2 to 77.9 MB in 17 s (written and verified).
+
 ## Downsample images (added 2026-11-24)
 
 `downsample-images` brings images placed over `--max-ppi` (default 450, the
