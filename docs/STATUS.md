@@ -1081,6 +1081,23 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Fixes on many files at once (added 2026-11-23)
+
+`preflight fix NAME|@list a.pdf b.pdf folder/ --out-dir FOLDER` runs the same
+fixes (or a saved action list) on every PDF named or directly inside the
+folders named: the batch use of action lists in production. It proposes for
+all first and prints one line each (which pages change, what is left, and the
+preflight status before and after), then asks once (or `--yes`) and writes
+"<name> fixed.pdf" into the new (or empty) folder for each file that changes,
+each verified as usual. Files that do not change are not written. A file that
+cannot be read or fixed is listed as ERROR and the others carry on (exit code
+2). Without --out-dir nothing is written. One-object fixes are refused, as in
+saved lists; --write is for one file. With one PDF everything is as before.
+
+On the 14 samples, `knock-out-white+overprint-black`: 4 change (Tempest,
+Wobblers, catalogue, X-am posters), 10 unchanged, 50 s, all written and
+verified, originals untouched.
+
 ## Job settings (added 2026-11-23)
 
 The values still waiting on the owner (press limits, the safe margin per

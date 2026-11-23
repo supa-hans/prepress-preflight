@@ -16,7 +16,7 @@ from .checks import Options
 from .actions import _step_parser, load
 from .cli_common import add_step_options
 from .engine import run
-from .fixes import FIXES
+from .fixes import FIXES, ONE_FILE_ONLY
 from .fixes.chain import deliver, final_file, parse_chain, run_chain
 from .model import FAIL, UNCHECKED, WARN
 from .report import page_list
@@ -108,13 +108,13 @@ def _step_settings(listed, args, argv):
     the job's defaults; a saved list's own options for a step come after and win."""
     # The job's options: everything typed except the fix name, the file, and
     # the options about writing, which belong to the whole run.
-    job, skip_next, positionals = [], False, [args.name, args.file]
+    job, skip_next, positionals = [], False, [args.name, *args.files]
     for token in argv:
         if skip_next:
             skip_next = False
-        elif token == "--write":
+        elif token in ("--write", "--out-dir"):
             skip_next = True
-        elif token.startswith("--write="):
+        elif token.startswith(("--write=", "--out-dir=")):
             continue
         elif token in ("--yes", "--no-preview", "--compact"):
             continue
@@ -132,6 +132,91 @@ def _step_settings(listed, args, argv):
     return settings
 
 
+def _batch(args, files, steps_in) -> int:
+    """The same fixes on several PDFs: propose for all, one confirmation, a new file for each that changes."""
+    if not files:
+        print("preflight fix: no PDF files found", file=sys.stderr)
+        return 2
+    if args.write:
+        print("preflight fix: --write is for one PDF; use --out-dir for several", file=sys.stderr)
+        return 2
+    single_object = sorted({name for name, _, _ in steps_in if name in ONE_FILE_ONLY})
+    if single_object:
+        print(f"preflight fix: {', '.join(single_object)} changes one object of one file, so it cannot run on several",
+              file=sys.stderr)
+        return 2
+    if args.out_dir and os.path.exists(args.out_dir) and (not os.path.isdir(args.out_dir) or os.listdir(args.out_dir)):
+        print(f"preflight fix: {args.out_dir} already exists and is not empty; choose a new folder", file=sys.stderr)
+        return 2
+    names = " + ".join(name for name, _, _ in steps_in)
+    print(f"FIX  {names}  on {len(files)} PDF(s)\n")
+    workdir = tempfile.mkdtemp(prefix="preflight-fix-")
+    results, errors = [], 0  # (path, final temp file or None, message)
+    try:
+        for i, path in enumerate(files, 1):
+            label = os.path.basename(path)
+            try:
+                folder = os.path.join(workdir, str(i))
+                os.makedirs(folder)
+                steps = run_chain(path, steps_in, FIXES, folder)
+                final = final_file(steps)
+                pages = sorted({page for s in steps for page, _ in s.proposal.reasons})
+                left = sum(len(s.proposal.skipped) for s in steps if not s.proposal.empty)
+                if final is None:
+                    message = "no change"
+                else:
+                    total = _page_count(path)
+                    where = "the file" if pages == [0] else page_list([p for p in pages if p], total)
+                    message = f"changes {where}" + (f"; {left} thing(s) left as they are" if left else "")
+                    if not args.no_preview:
+                        options = steps_in[0][1]
+                        message += f"; preflight {run(path, options).status} -> {run(final, options).status}"
+            except Exception as exc:  # reported, never skipped quietly; the other files carry on
+                errors += 1
+                results.append((path, None, f"ERROR {type(exc).__name__}: {exc}"))
+                print(f"  ERROR    {label}: {exc}")
+                continue
+            results.append((path, final, message))
+            print(f"  {'CHANGE' if final else 'same':8} {label}: {message}")
+        to_write = [(p, f) for p, f, _ in results if f]
+        print(f"\n{len(to_write)} of {len(files)} would change" + (f"; {errors} could not be fixed" if errors else "")
+              + ". For the details of one, run the fix on that file alone.")
+        if not to_write:
+            return 2 if errors else 0
+        if not args.out_dir:
+            print("Nothing written. To write the fixed copies: add --out-dir FOLDER")
+            return 2 if errors else 0
+        if not args.yes:
+            if not sys.stdin.isatty():
+                print("preflight fix: confirmation needed; run it in a terminal, or add --yes", file=sys.stderr)
+                return 2
+            answer = input(f"\nWrite {len(to_write)} fixed cop{'y' if len(to_write) == 1 else 'ies'} into {args.out_dir}? "
+                           "The originals are not changed. Type yes: ")
+            if answer.strip().lower() != "yes":
+                print("Nothing written.")
+                return 1
+        os.makedirs(args.out_dir, exist_ok=True)
+        written = 0
+        for path, final in to_write:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            dst = os.path.join(args.out_dir, f"{stem} fixed.pdf")
+            n = 2
+            while os.path.exists(dst):  # two inputs of the same name from different folders
+                dst = os.path.join(args.out_dir, f"{stem} fixed {n}.pdf")
+                n += 1
+            try:
+                deliver(path, final, dst, compact=args.compact)
+                written += 1
+                print(f"  written  {dst}")
+            except Exception as exc:
+                errors += 1
+                print(f"  ERROR    {os.path.basename(path)}: nothing written: {exc}", file=sys.stderr)
+        print(f"Written and verified: {written} file(s) in {args.out_dir}")
+        return 2 if errors else 0
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def main(argv) -> int:
     parser = argparse.ArgumentParser(prog="preflight fix",
                                      description="Propose a fix, or several joined with +, and write the result to a "
@@ -139,8 +224,11 @@ def main(argv) -> int:
     parser.add_argument("name", help="which fix: " + ", ".join(sorted(FIXES)) +
                                      "; join several with + to run them in order, e.g. trim-from-marks+add-bleed; "
                                      "or @name for a saved action list (see: preflight actions)")
-    parser.add_argument("file", help="the PDF to fix; it is never modified")
-    parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file")
+    parser.add_argument("files", nargs="+", metavar="FILE_OR_FOLDER",
+                        help="the PDF to fix, or several, or folders of them; they are never modified")
+    parser.add_argument("--write", metavar="NEW.pdf", help="write the fixed copy to this new file (one PDF)")
+    parser.add_argument("--out-dir", metavar="FOLDER",
+                        help="several PDFs: write each fixed copy into this new (or empty) folder, as '<name> fixed.pdf'")
     parser.add_argument("--compact", action="store_true",
                         help="write the fixed copy as a fresh file without what the fixes replaced (smaller; the "
                              "original's bytes are then not kept at its start, and it is checked page by page instead)")
@@ -166,6 +254,11 @@ def main(argv) -> int:
     except ValueError as exc:
         print(f"preflight fix: {exc}", file=sys.stderr)
         return 2
+    from .cli import _pdfs
+    files = _pdfs(args.files)
+    if len(files) > 1 or args.out_dir or any(os.path.isdir(f) for f in args.files):
+        return _batch(args, files, steps_in)
+    args.file = files[0]
     if args.write and os.path.exists(args.write):
         print(f"preflight fix: {args.write} already exists; choose a new file name", file=sys.stderr)
         return 2

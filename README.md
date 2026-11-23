@@ -82,6 +82,7 @@ preflight fix scale flyer.pdf --trim 148x210 --write flyer-a5.pdf    # scale A4 
 preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press.pdf   # several fixes in one go
 preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save a chain under a name
 preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
+preflight fix @canva-press jobs/ --out-dir jobs-fixed/                  # on every PDF in a folder
 preflight jobs save coated -- --ink-limit 320 --safe-margin 3      # job settings under a name
 preflight flyer.pdf --job coated                                     # use them (also report, app, fix)
 preflight fix reduce-ink posters.pdf --job coated --write posters-320.pdf   # press limit from the job
