@@ -39,6 +39,8 @@
       fields: [] },
     "knock-out-white": { help: "Knocks out every white object set to overprint (white overprint does not print). Only those objects change.",
       fields: [] },
+    "reduce-ink": { help: "Brings flat CMYK colours over the press's total ink limit down to it: grey moves into black first, then C, M and Y come down together. Colours within the limit are not touched. Images and gradients are not changed.",
+      fields: [["ink-limit", "Press limit (%)", "number", "300"]] },
     "rich-black-text": { help: "Makes small text in rich black (K 85% or more with C, M or Y) K100 only, so it prints sharp on one plate. Other colours are left. Run Overprint black after it to overprint the new black.",
       fields: [["max-text", "Text up to (pt)", "number", "8"]] },
     "overprint-black": { help: "Sets small 100% black (K100) text and thin black lines to overprint, so misregistration cannot show a halo around them. Large black is left knocking out, so photos do not show through it.",

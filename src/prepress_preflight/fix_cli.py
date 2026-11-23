@@ -94,8 +94,9 @@ def _page_count(path) -> int:
 
 
 def _settings(ns):
-    options = Options(min_bleed_mm=ns.min_bleed, expected_trim_mm=ns.trim, bound=ns.bound)
-    extra = dict(method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode, spots=ns.spot,
+    options = Options(min_bleed_mm=ns.min_bleed, expected_trim_mm=ns.trim, bound=ns.bound,
+                      ink_limit_pct=ns.ink_limit if ns.ink_limit is not None else Options.ink_limit_pct)
+    extra = dict(ink_limit=ns.ink_limit, method=ns.method, clip=ns.clip_to_bleed, marks=ns.marks, mode=ns.mode, spots=ns.spot,
                  target=ns.target, overprint=ns.overprint, expect=ns.expect, profile=ns.profile,
                  near_black=ns.near_black_to_k, replace=ns.replace, cmyk=ns.cmyk,
                  max_text=ns.max_text, max_line=ns.max_line)

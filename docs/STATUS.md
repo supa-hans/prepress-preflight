@@ -1081,6 +1081,42 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Reduce total ink (added 2026-11-23)
+
+`reduce-ink --ink-limit 300` brings colours over the press's total ink limit
+down to it. The limit must be given (200 to 399): the owner does not have the
+press limits yet, and the check's 400% default is no limit to reduce to.
+
+How a colour over the limit comes down (colours within it are untouched, so
+nothing else shifts): first grey is moved into black (equal parts of C, M and
+Y out, the same amount of K in, until it fits or K is 100%: two parts of ink
+removed for one, about as dark); then, if still over, C, M and Y are scaled
+down together, which keeps the hue. C100 M100 Y100 K100 at 300% becomes
+C67 M67 Y67 K100. A standard UCR/GCR approximation, chosen over a profile
+round trip because a round trip would also move every colour within the
+limit (K-only text would become four-colour).
+
+What it changes: flat CMYK colours of shapes, lines, text and stencil masks
+(bracketed per object, as the other object fixes); CMYK images, per pixel,
+only the pixels over the limit (the rest keep their exact values), keeping
+their compression; a JPEG is saved again at its own quality and brought 2%
+under the limit so the recompression noise cannot lift it back over; an
+indexed CMYK image has its palette reduced, exactly. Listed and left:
+gradients, CMYK inline images, colour-keyed images, and images in spot,
+DeviceN or Lab colour. Verified: every object unchanged except the targets,
+whose colours are exactly the reduced ones; every replaced image decodes at
+the same size with nothing over the limit. The app suggests it for a Total
+ink fail.
+
+X-am posters at 300%: 1,270 vector colours (1,160 of them 400% black) and
+153 image placements (most of them indexed CMYK), 5.6 s; Total ink at 300%
+then passes (peak 300%), and the page looks the same at preview size. Two
+things found on the way: the first version skipped indexed images without
+saying so (now handled, and any image it cannot change is listed), and
+copying the indexed images' original compressed data carried over the
+originals' damaged-stream warnings, which the structure check rightly
+refused; the indexes are now decompressed and compressed afresh.
+
 ## Set the output intent (added 2026-11-20)
 
 `set-output-intent` says which print condition the file's CMYK was made for,
@@ -1119,8 +1155,8 @@ identical, or be recalibrated against the samples.
    Watch whether the warn level is too noisy on InDesign jobs.
 2. **Safe margin: confirm the distance.** 1.5 mm is the default; the owner may
    want a larger one per product type.
-3. **Total ink: set the real press limit.** The area report and `--ink-limit`
-   are done. The owner does not have the press limits yet (2026-11-17), so the
+3. **Total ink: set the real press limit.** The area report, `--ink-limit` and
+   the reduce-ink fix are done. The owner does not have the press limits yet (2026-11-17), so the
    default stays at 400% as a placeholder.
 4. **Compare against Acrobat and PitStop** on real jobs; investigate every
    disagreement.

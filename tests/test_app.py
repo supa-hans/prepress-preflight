@@ -495,3 +495,9 @@ def test_small_rich_black_text_suggests_making_it_k(app, make):
     report = wait_report(app(make(b"BT /F1 7 Tf 0.75 0.68 0.67 0.9 k 100 100 Td (x) Tj ET", font={"/F1": font})))["report"]
     i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Small text inks")
     assert report["suggestions"][i] == ["rich-black-text"]
+
+
+def test_total_ink_fail_suggests_reducing_it(app, make):
+    report = wait_report(app(make(b"1 1 1 1 k 100 100 100 100 re f")))["report"]
+    i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Total ink" and f["severity"] == "fail")
+    assert report["suggestions"][i] == ["reduce-ink"]

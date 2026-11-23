@@ -58,6 +58,9 @@ def add_step_options(parser) -> None:
                              "rich-black-text: rich-black text up to this size becomes K100 (default 8)")
     parser.add_argument("--max-line", type=float, metavar="PT",
                         help="overprint-black: black lines up to this weight are set to overprint (default 2)")
+    parser.add_argument("--ink-limit", type=float, metavar="PCT",
+                        help="reduce-ink: the press's total ink limit, e.g. 300 (also used by the Total ink check "
+                             "before and after)")
     parser.add_argument("--cmyk", metavar="C,M,Y,K",
                         help="recolour-object: the new colour in percent, e.g. 0,0,0,100")
     parser.add_argument("--profile", metavar="NAME|PATH",

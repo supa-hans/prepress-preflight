@@ -12,6 +12,7 @@ from .registration_to_black import propose_registration_to_black, write_registra
 from .overprint_black import propose_overprint_black, write_overprint_black
 from .output_intent import propose_set_output_intent, write_set_output_intent
 from .recolour_object import propose_recolour_object, write_recolour_object
+from .reduce_ink import propose_reduce_ink, write_reduce_ink
 from .remove_object import propose_remove_object, write_remove_object
 from .rename_spot import propose_rename_spot, write_rename_spot
 from .rich_black_text import propose_rich_black_text, write_rich_black_text
@@ -36,6 +37,7 @@ FIXES = {
     "thicken-hairlines": (propose_thicken_hairlines, write_thicken_hairlines),
     "rgb-to-cmyk": (propose_rgb_to_cmyk, write_rgb_to_cmyk),
     "set-output-intent": (propose_set_output_intent, write_set_output_intent),
+    "reduce-ink": (propose_reduce_ink, write_reduce_ink),
     "rich-black-text": (propose_rich_black_text, write_rich_black_text),
     "overprint-black": (propose_overprint_black, write_overprint_black),
     "remove-object": (propose_remove_object, write_remove_object),
