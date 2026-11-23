@@ -541,3 +541,16 @@ def test_previews_are_judged_with_the_jobs_settings(app, make, tmp_path, monkeyp
     with pytest.raises(urllib.error.HTTPError) as err:
         post(base, "/api/job", {"name": ""})
     assert "Review" in json.loads(err.value.read())["error"]
+
+
+def test_annotations_suggest_flattening_or_removing(app, make, tmp_path):
+    import pikepdf
+    path = make(b"0 0 0 1 k 30 30 20 20 re f")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        pdf.pages[0].obj["/Annots"] = pikepdf.Array([
+            pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.Stamp, Rect=[100, 100, 150, 150], F=4)),
+            pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.Text, Rect=[200, 100, 220, 120], F=0))])
+        pdf.save(path)
+    report = wait_report(app(path))["report"]
+    got = {f["severity"]: s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Annotations"}
+    assert got == {"warn": ["flatten-annotations", "remove-annotations"], "note": ["remove-annotations"]}

@@ -1082,6 +1082,39 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Flatten or remove annotations (added 2026-11-23)
+
+Two fixes for the Annotations warning, which until now had none. A RIP may
+or may not print an annotation set to print, and a form field's look is drawn
+by the viewer, so what the client saw is not guaranteed on press.
+
+- **flatten-annotations** draws each annotation set to print into the page,
+  using its stored appearance placed on its rectangle as the PDF standard
+  describes (12.5.5), then takes it off the page. Form fields taken off every
+  page leave the form; the form goes when it has none. Comment marks (sticky
+  notes, highlights, strike-outs, carets, file attachments) are never
+  flattened even when set to print: Acrobat sets sticky notes to print by
+  default, and a note icon is never artwork. Left, and said so: no stored
+  appearance; a form that asks the viewer to redraw its fields
+  (NeedAppearances, so the stored look may be stale); annotations on a layer,
+  hidden on screen but set to print, or kept upright on a rotated page.
+  Verified by rendering the page with its annotations before and after; it
+  must look the same (a deliberately misplaced drawing is refused in a test).
+  The proposal names any lettering in unembedded fonts, since the Font
+  embedding check will then report it (field appearances usually use
+  Helvetica; Acrobat's own flatten does the same).
+- **remove-annotations** takes every comment, stamp and form field off the
+  page, with their pop-up notes. Links, trap networks and printer's marks stay,
+  as in the check. The page content is not touched (verified).
+
+Which to use is the operator's call per job: an "APPROVED" stamp or a client's
+markup belongs off the page, a filled form field usually belongs in it. The app
+offers both for the warning and remove-annotations for the note.
+
+No sample carries an annotation other than one link, so this is proven on
+synthetic files and on a proof made with PyMuPDF's own annotation tools
+(stamp, text box, sticky note, filled text field, ticked box).
+
 ## Transparency (added 2026-11-23)
 
 The Transparency check lists live transparency other than blend modes:

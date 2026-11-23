@@ -5,6 +5,8 @@ produces a Proposal saying exactly what would change, so the user can confirm
 it, and the write is verified before the new file is put in place.
 """
 from .base import Proposal
+from .annotations import (propose_flatten_annotations, propose_remove_annotations, write_flatten_annotations,
+                          write_remove_annotations)
 from .add_bleed import propose_add_bleed, propose_add_marks, write_add_bleed
 from .knock_out_white import propose_knock_out_white, write_knock_out_white
 from .object_overprint import propose_object_overprint, write_object_overprint
@@ -40,6 +42,8 @@ FIXES = {
     "reduce-ink": (propose_reduce_ink, write_reduce_ink),
     "rich-black-text": (propose_rich_black_text, write_rich_black_text),
     "overprint-black": (propose_overprint_black, write_overprint_black),
+    "flatten-annotations": (propose_flatten_annotations, write_flatten_annotations),
+    "remove-annotations": (propose_remove_annotations, write_remove_annotations),
     "remove-object": (propose_remove_object, write_remove_object),
     "recolour-object": (propose_recolour_object, write_recolour_object),
 }
