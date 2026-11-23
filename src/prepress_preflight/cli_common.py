@@ -50,7 +50,8 @@ def add_step_options(parser) -> None:
                         help="add-bleed, add-marks: clip everything on the page to the bleed box")
     parser.add_argument("--spot", action="append", metavar="SPOT",
                         help="rename-spot: OLD=NEW, rename a spot or merge it into one already in the file; "
-                             "spot-to-cmyk: the spot to convert (default: all). Repeatable")
+                             "spot-to-cmyk: the spot to convert (default: all); "
+                             "overprint-spot: the spot to set to overprint (default: dielines). Repeatable")
     parser.add_argument("--layer", action="append", metavar="NAME",
                         help="remove-layer: the layer to remove (default: every hidden layer). Repeatable")
     parser.add_argument("--object", dest="target", metavar="PAGE:NUMBER",

@@ -530,6 +530,8 @@ def suggest(report: dict) -> list[list[str]]:
             fixes += ["flatten-annotations", "remove-annotations"]
         elif check == "Annotations":
             fixes.append("remove-annotations")
+        elif check == "Dielines" and sev == WARN:
+            fixes.append("overprint-spot")
         elif check == "Layers":
             fixes.append("remove-layer")
         elif check == "Black overprint":

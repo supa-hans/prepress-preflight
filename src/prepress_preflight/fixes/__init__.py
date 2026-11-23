@@ -12,6 +12,7 @@ from .knock_out_white import propose_knock_out_white, write_knock_out_white
 from .object_overprint import propose_object_overprint, write_object_overprint
 from .registration_to_black import propose_registration_to_black, write_registration_to_black
 from .overprint_black import propose_overprint_black, write_overprint_black
+from .overprint_spot import propose_overprint_spot, write_overprint_spot
 from .output_intent import propose_set_output_intent, write_set_output_intent
 from .recolour_object import propose_recolour_object, write_recolour_object
 from .reduce_ink import propose_reduce_ink, write_reduce_ink
@@ -42,6 +43,7 @@ FIXES = {
     "set-output-intent": (propose_set_output_intent, write_set_output_intent),
     "reduce-ink": (propose_reduce_ink, write_reduce_ink),
     "rich-black-text": (propose_rich_black_text, write_rich_black_text),
+    "overprint-spot": (propose_overprint_spot, write_overprint_spot),
     "overprint-black": (propose_overprint_black, write_overprint_black),
     "flatten-annotations": (propose_flatten_annotations, write_flatten_annotations),
     "remove-annotations": (propose_remove_annotations, write_remove_annotations),

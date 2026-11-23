@@ -566,3 +566,12 @@ def test_layers_suggest_removing_one(app, make):
     report = wait_report(app(path))["report"]
     got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Layers"]
     assert got == [["remove-layer"]]
+
+
+def test_knocking_out_dieline_suggests_overprinting_it(app, make):
+    import pikepdf
+    tint = pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 1, 0, 0], N=1)
+    die = pikepdf.Array([pikepdf.Name.Separation, pikepdf.Name("/Dieline"), pikepdf.Name.DeviceCMYK, tint])
+    report = wait_report(app(make(b"/Die CS 1 SCN 60 60 180 80 re S", colorspace={"/Die": die})))["report"]
+    got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Dielines" and f["severity"] == "warn"]
+    assert got == [["overprint-spot"]]

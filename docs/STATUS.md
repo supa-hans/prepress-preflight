@@ -1082,6 +1082,26 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Overprint dielines and other spots (added 2026-11-24)
+
+`overprint-spot` is the fix for the Dielines warning: a dieline that knocks out
+cuts its shape out of the artwork beneath, and since the dieline plate is never
+printed, the job can carry a white hairline right where the cutter runs.
+By default it takes every dieline (by name, as the check does); `--spot NAME`
+names other spots instead, such as a varnish, foil or Scodix plate, which
+normally overprint for the same reason.
+
+Built on bracket.py like overprint-black: each object wholly in the chosen
+spots, above 0%, gets overprint set around it and nothing else changes
+(verified object by object). The overprint mode is not touched; it only
+matters for CMYK. A path filled in one colour and stroked in the dieline is
+left and said so, since setting one side would reach the other.
+
+On the samples it changes nothing, correctly: the Wobblers' dieline and the
+business card's SKODIX plate (page 3) already overprint, and no other sample
+has a dieline. So it is proven on synthetic files (strokes, fills, text
+blocks, a refused write).
+
 ## Remove a layer (added 2026-11-23)
 
 `remove-layer --layer NAME` (repeatable; default: every hidden layer) takes
