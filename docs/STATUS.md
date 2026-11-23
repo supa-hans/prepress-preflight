@@ -22,6 +22,7 @@
 | Blend over same ink | note | As above, staying within 100% |
 | Total ink | fail | Over the limit across at least 1 mm², or any vector or text object coloured over it. Limit is `--ink-limit`, default 400% until the press limit is known |
 | Image resolution | warn | Under 150 ppi. 300 preferred; large format may sit lower |
+| Image resolution | note | Over 450 ppi (Acrobat's and PitStop's usual threshold): more than the press can use; downsample-images would make the file smaller |
 | Image detail | warn | An image at 150 ppi or more whose edges are as soft as an image enlarged about 2x or more (edge sharpness under 0.38); reports the real detail in ppi |
 | Safe margin | warn | Live text within 1.5 mm of the trim or crossing it; or artwork of 15% ink or more within 1.5 mm of a white edge without reaching it. `--safe-margin` sets the distance |
 | Hairlines | warn | Stroked line under 0.25 pt as placed |
@@ -1081,6 +1082,39 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## Downsample images (added 2026-11-24)
+
+`downsample-images` brings images placed over `--max-ppi` (default 450, the
+usual Acrobat/PitStop threshold) to `--to-ppi` (default 300). The resolution is
+the effective one, and an image placed several times is judged by its largest
+placement, so no use falls under the target. The Image resolution check now
+notes images over 450 ppi, and the app offers the fix for that note.
+
+Two things found on the samples and built in:
+- **Transparency fringes.** Canva's clip art carries a soft mask, and the
+  colour under its transparent part is black (the AFL logo in Little Stars:
+  44% of it). A plain resample pulls that black into the visible edge. So an
+  image with a soft mask is resampled weighted by its opacity, and the mask
+  itself stays at full resolution so the outline stays sharp. A test proves a
+  white edge stays white where a plain resample darkens it.
+- **The render check compares 0.7 mm cells, not pixels.** MuPDF shrinks a
+  fine image for the screen by skipping pixels, so thin lines alias
+  differently from a filtered image: page 39 of Little Stars differed by up to
+  155 levels on single pixels at 36 dpi, but by at most 31 on 0.7 mm cell
+  averages at 144 dpi. The check therefore proves place, colour and tone, not
+  sharpness; at 600 dpi the logo edge was compared by eye and is clean.
+
+Results (all written with `--compact` and verified; originals unchanged):
+- **Pull-up banner**, `--max-ppi 200 --to-ppi 150`: the photo goes from
+  10156 × 11786 px (300 ppi) to 5078 × 5893 px; the file from 509 to 320 MB,
+  in 19 s with 2.7 GB of memory at peak. The other ~242 MB is Illustrator's
+  private editing data (about 3,700 chunks under the page's PieceInfo), which
+  does not print; removing it would be a separate fix.
+- **Yearbook**: 16 images at 478 to 935 ppi on pages 11, 16 and 62 to 65;
+  50.0 to 45.7 MB.
+- **Little Stars**: 243 Canva images over 450 ppi (up to 2600); 48.5 to
+  33.6 MB.
 
 ## Overprint dielines and other spots (added 2026-11-24)
 

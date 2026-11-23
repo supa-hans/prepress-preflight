@@ -45,6 +45,8 @@
       fields: [["max-text", "Text up to (pt)", "number", "8"]] },
     "overprint-black": { help: "Sets small 100% black (K100) text and thin black lines to overprint, so misregistration cannot show a halo around them. Large black is left knocking out, so photos do not show through it.",
       fields: [["max-text", "Text up to (pt)", "number", "12"], ["max-line", "Lines up to (pt)", "number", "2"]] },
+    "downsample-images": { help: "Brings images placed at far more resolution than the press can use down to a sensible one, so the file is smaller and RIPs faster. Judged by each image's largest placement. Large format seen from a distance: try over 200 to 150 ppi.",
+      fields: [["max-ppi", "Images over (ppi)", "number", "450"], ["to-ppi", "Bring them to (ppi)", "number", "300"]] },
     "overprint-spot": { help: "Sets dielines (cutting, crease and perf lines) to overprint, so the artwork beneath is not knocked out along the cut. Name other spots, such as a varnish plate, to set those instead.",
       fields: [["spot", "Only these spots (one per line; empty for every dieline)", "lines", ""]] },
     "remove-layer": { help: "Takes everything on a layer off the page and removes the layer, e.g. a supplier's template layer. Leave the name empty to remove every hidden layer. Checked against the original rendered with that layer switched off.",

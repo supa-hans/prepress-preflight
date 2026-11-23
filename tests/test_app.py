@@ -575,3 +575,16 @@ def test_knocking_out_dieline_suggests_overprinting_it(app, make):
     report = wait_report(app(make(b"/Die CS 1 SCN 60 60 180 80 re S", colorspace={"/Die": die})))["report"]
     got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Dielines" and f["severity"] == "warn"]
     assert got == [["overprint-spot"]]
+
+
+def test_images_over_450_ppi_suggest_downsampling(app, make):
+    import zlib
+    import pikepdf
+
+    def image(pdf):
+        return pdf.make_stream(zlib.compress(bytes(600 * 600)), Type=pikepdf.Name.XObject, Subtype=pikepdf.Name.Image,
+                               Width=600, Height=600, ColorSpace=pikepdf.Name.DeviceGray, BitsPerComponent=8,
+                               Filter=pikepdf.Name.FlateDecode)
+    report = wait_report(app(make(b"q 72 0 0 72 60 60 cm /Im0 Do Q", xobject={"/Im0": image})))["report"]
+    got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Image resolution"]
+    assert got == [["downsample-images"]]

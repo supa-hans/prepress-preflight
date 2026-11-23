@@ -52,6 +52,10 @@ def add_step_options(parser) -> None:
                         help="rename-spot: OLD=NEW, rename a spot or merge it into one already in the file; "
                              "spot-to-cmyk: the spot to convert (default: all); "
                              "overprint-spot: the spot to set to overprint (default: dielines). Repeatable")
+    parser.add_argument("--max-ppi", type=float, metavar="PPI",
+                        help="downsample-images: images placed over this resolution are downsampled (default 450)")
+    parser.add_argument("--to-ppi", type=float, metavar="PPI",
+                        help="downsample-images: the resolution they are brought to (default 300)")
     parser.add_argument("--layer", action="append", metavar="NAME",
                         help="remove-layer: the layer to remove (default: every hidden layer). Repeatable")
     parser.add_argument("--object", dest="target", metavar="PAGE:NUMBER",

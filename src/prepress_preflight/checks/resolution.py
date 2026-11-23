@@ -3,6 +3,8 @@ from __future__ import annotations
 from ..model import NOTE, WARN
 from .base import Check
 
+HIGH_PPI = 450  # Acrobat's and PitStop's usual downsampling threshold; downsample-images uses the same
+
 
 class ImageResolutionCheck(Check):
     """Effective resolution of each placed image, at the size it is placed."""
@@ -18,6 +20,9 @@ class ImageResolutionCheck(Check):
         self.low_pages: list[int] = []
         self.lowest: tuple[float, int] | None = None  # (ppi, page)
         self.low_locations: list = []
+        self.high_count = 0
+        self.high_pages: list[int] = []
+        self.highest: tuple[float, int] | None = None
 
     def page(self, page, content):
         low = []
@@ -35,6 +40,12 @@ class ImageResolutionCheck(Check):
                 low.append((ppi, e.bbox))
             elif ppi < self.options.preferred_ppi - 0.5:
                 mid += 1
+            elif ppi > HIGH_PPI + 0.5:
+                self.high_count += 1
+                if not self.high_pages or self.high_pages[-1] != page.number:
+                    self.high_pages.append(page.number)
+                if self.highest is None or ppi > self.highest[0]:
+                    self.highest = (ppi, page.number)
         if low:
             lowest = min(p for p, _ in low)
             self.low_count += len(low)
@@ -54,4 +65,9 @@ class ImageResolutionCheck(Check):
         if self.mid_count:
             self.add(NOTE, f"{self.mid_count} image(s) between {self.options.min_ppi:g} and "
                            f"{self.options.preferred_ppi:g} ppi", self.mid_pages)
+        if self.high_count:
+            where = f" on page {self.highest[1]}" if len(self.high_pages) > 1 else ""
+            self.add(NOTE, f"{self.high_count} image(s) over {HIGH_PPI} ppi, more than the press can use; highest is "
+                           f"{self.highest[0]:.0f} ppi{where}. Downsampling would make the file smaller",
+                     self.high_pages)
         return self.findings
