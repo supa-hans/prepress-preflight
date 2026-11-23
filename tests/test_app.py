@@ -501,3 +501,43 @@ def test_total_ink_fail_suggests_reducing_it(app, make):
     report = wait_report(app(make(b"1 1 1 1 k 100 100 100 100 re f")))["report"]
     i = next(i for i, f in enumerate(report["findings"]) if f["check"] == "Total ink" and f["severity"] == "fail")
     assert report["suggestions"][i] == ["reduce-ink"]
+
+
+def test_choosing_a_job_checks_again_with_its_settings(app, make, tmp_path, monkeypatch):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "press.txt").write_text("# Coated sheetfed\n--ink-limit 300 --safe-margin 3\n")
+    monkeypatch.setenv("PREFLIGHT_JOBS", str(jobs))
+    base = app(make(b"0.9 0.9 0.9 0.2 k 100 100 100 100 re f"))  # 290%: fine at 300 and at 400
+    state = wait_report(base)
+    assert state["job"] is None and [j["name"] for j in state["jobs"]] == ["press"]
+    assert "400% total ink" in state["settings"]
+    state = post(base, "/api/job", {"name": "press"})
+    state = wait_report(base)
+    assert state["job"] == "press" and "300% total ink" in state["settings"] and "3 mm safe margin" in state["settings"]
+    post(base, "/api/job", {"name": ""})
+    assert "400% total ink" in wait_report(base)["settings"]
+
+
+def test_previews_are_judged_with_the_jobs_settings(app, make, tmp_path, monkeypatch):
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "press.txt").write_text("--ink-limit 300\n")
+    monkeypatch.setenv("PREFLIGHT_JOBS", str(jobs))
+    base = app(make(b"1 1 1 1 k 100 100 100 100 re f 0 0 0 1 K 0.5 w 60 60 m 300 60 l S"))
+    wait_report(base)
+    post(base, "/api/job", {"name": "press"})
+    before = [f for f in wait_report(base)["report"]["findings"] if f["check"] == "Total ink" and f["severity"] == "fail"]
+    assert before
+    # an unrelated fix must not make the 300% Total ink fail look "gone" by checking at 400%
+    post(base, "/api/preview", {"fix": "overprint-black", "options": []})
+    effect = wait_preview(base)["preview"]["effect"]
+    assert not any("Total ink" in str(effect[k]) for k in ("gone", "new", "changed")), effect
+    # reduce-ink with no limit typed takes the job's
+    post(base, "/api/preview", {"fix": "reduce-ink", "options": []})
+    preview = wait_preview(base)["preview"]
+    assert preview["error"] is None and "over 300% total ink" in preview["reasons"][0]["text"]
+    post(base, "/api/keep", {})
+    with pytest.raises(urllib.error.HTTPError) as err:
+        post(base, "/api/job", {"name": ""})
+    assert "Review" in json.loads(err.value.read())["error"]

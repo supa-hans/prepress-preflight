@@ -15,6 +15,7 @@ opened, or the app stops.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import mimetypes
 import os
@@ -39,6 +40,7 @@ from ..checks import Options
 from ..document import device_matrix
 from ..engine import run
 from ..fix_cli import _settings
+from ..jobs import job_options, list_jobs
 from ..fixes import FIXES
 from ..fixes.chain import deliver, run_chain
 from ..model import FAIL, UNCHECKED, WARN
@@ -49,6 +51,12 @@ import pikepdf
 
 STATIC = Path(__file__).parent / "static"
 RECENT_MAX = 12
+
+
+def _settings_text(o: Options) -> str:
+    return (f"{o.min_bleed_mm:g} mm bleed, {o.safe_margin_mm:g} mm safe margin, {o.ink_limit_pct:g}% total ink"
+            + (", process colours only" if o.cmyk_only else "") + (", bound" if o.bound else "")
+            + (f", job size {o.expected_trim_mm[0]:g} × {o.expected_trim_mm[1]:g} mm" if o.expected_trim_mm else ""))
 
 
 def recent_file() -> Path:
@@ -84,10 +92,23 @@ pymupdf.TOOLS.set_icc(False)  # show the file's own CMYK values, as the checks d
 RENDER_LOCK = threading.RLock()
 
 
+STEP_FIELDS = {"--trim": "expected_trim_mm", "--min-bleed": "min_bleed_mm", "--bound": "bound",
+               "--ink-limit": "ink_limit_pct"}
+
+
+def check_options(base: Options, tokens, step: Options) -> Options:
+    """The options to check a fix's result with: the app's own (its job), with
+    only what the fix's options say explicitly put on top, so before and after
+    are judged alike."""
+    typed = {t.split("=", 1)[0] for t in tokens}
+    return dataclasses.replace(base, **{f: getattr(step, f) for flag, f in STEP_FIELDS.items() if flag in typed})
+
+
 class Session:
     """The file that is open, its report, and cached page renders. One per app."""
 
     def __init__(self, options: Options):
+        self.start_options = options  # as the app was started; choosing no job goes back to these
         self.options = options
         self.lock = threading.Lock()
         self.path: str | None = None
@@ -168,7 +189,23 @@ class Session:
                     "queue_report": self.base_report if self.queue else None,
                     "queue_effect": effect(self.report, self.base_report) if self.queue and self.base_report else None,
                     "exported": self.exported, "export_error": self.export_error,
-                    "recent": load_recent() if self.path is None else []}
+                    "recent": load_recent() if self.path is None else [],
+                    "job": self.options.job, "jobs": list_jobs(),
+                    "settings": _settings_text(self.options)}
+
+    def set_job(self, name: str | None) -> None:
+        """Check with a saved job's settings (None: as the app was started). Re-checks the open file."""
+        options = job_options(name) if name else self.start_options
+        with self.lock:
+            if self.preview_busy:
+                raise ValueError("Something is already being worked on")
+            if self.queue:
+                raise ValueError("Changing the job checks the file again, which would clear the fixes kept in Review: "
+                                 "export or remove them first")
+            self.options = options
+            path = self.path
+        if path:
+            self.open(path)
 
     # ---- propose ----------------------------------------------------------
 
@@ -192,7 +229,8 @@ class Session:
             ns = _step_parser().parse_args(tokens)
         except (Exception, SystemExit) as exc:
             raise ValueError(f"Those options are not right: {exc}") from None
-        options, extra = _settings(ns)
+        step_options, extra = _settings(ns)
+        options = check_options(self.options, tokens, step_options)
         with self.lock:
             if self.path is None or self.report is None:
                 raise ValueError("Open a file and wait for its check first")
@@ -272,8 +310,8 @@ class Session:
         try:
             settings = []
             for fix, tokens in steps:
-                options, extra = _settings(_step_parser().parse_args(tokens))
-                settings.append((fix, options, extra))
+                step_options, extra = _settings(_step_parser().parse_args(tokens))
+                settings.append((fix, check_options(self.options, tokens, step_options), extra))
             folder = tempfile.mkdtemp(dir=self.workdir)
             with RENDER_LOCK:
                 done = run_chain(path, settings, FIXES, folder)
@@ -617,6 +655,9 @@ def make_handler(session: Session, key: str, port_ref: dict):
                     if not path:
                         raise ValueError("Choose a PDF file")
                     session.open(path)
+                    return self._json(HTTPStatus.OK, session.state())
+                if url.path == "/api/job":
+                    session.set_job(body.get("name") or None)
                     return self._json(HTTPStatus.OK, session.state())
                 if url.path == "/api/keep":
                     session.keep_preview()

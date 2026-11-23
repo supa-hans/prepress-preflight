@@ -1100,6 +1100,26 @@ Found on the way: the app had no check options at all (always the defaults);
 `preflight app` now takes them, and `--job`. No jobs are made yet: they wait
 for the owner's numbers.
 
+**In the app (added 2026-11-23):** a Job menu in the header lists the saved
+jobs ("Job: as started" goes back to the settings the app was opened with).
+Choosing one checks the file again with its settings; its tooltip, and the
+file name's, say what the file is checked for. Changing job is refused while
+fixes are kept in Review, since the re-check would clear them. reduce-ink's
+limit field is now empty by default and takes the job's limit.
+
+Found and fixed on the way: fix previews in the app re-checked the result
+with the fix's own options, not the app's check settings, so a preview could
+show a finding "gone" only because it was judged at a different limit or
+margin (possible since the app took check options). Previews and the Review
+rebuild now check with the app's settings, with only what a fix's options
+state explicitly (--trim, --min-bleed, --bound, --ink-limit) on top. A test
+proves it: it fails against the old behaviour.
+
+Tried in the app on the X-am posters with a test job (300%, 3 mm): the
+menu re-checks at 300%, the Total ink fail suggests reduce-ink, and its
+preview with the limit field empty brings everything to 300% and shows the
+fail gone.
+
 ## Reduce total ink (added 2026-11-23)
 
 `reduce-ink --ink-limit 300` brings colours over the press's total ink limit

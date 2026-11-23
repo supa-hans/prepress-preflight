@@ -70,6 +70,25 @@ def load(name: str) -> list[str]:
     return parse_job(path.read_text(), str(path))
 
 
+def list_jobs() -> list[dict]:
+    """Every saved job that reads cleanly: [{name, description, options}]."""
+    folder = jobs_dir()
+    out = []
+    for path in sorted(folder.glob("*.txt")) if folder.exists() else []:
+        try:
+            out.append({"name": path.stem, "description": description(path),
+                        "options": " ".join(parse_job(path.read_text(), str(path)))})
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def job_options(name: str):
+    """The check Options a saved job sets (defaults for the rest)."""
+    from .cli_common import options_from
+    return options_from(_parser().parse_args(load(name)), name)
+
+
 def description(path: Path) -> str:
     for line in path.read_text().splitlines():
         if line.strip().startswith("#"):
