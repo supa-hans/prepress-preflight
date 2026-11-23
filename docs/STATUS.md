@@ -1081,6 +1081,27 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Watched folder (added 2026-11-23)
+
+`preflight watch IN --out OUT [--fix @list] [--job NAME]` is the hot folder:
+every PDF directly inside IN gets a preflight report in OUT/reports, and with
+--fix each file the fixes change gets a verified fixed copy in OUT/fixed plus
+a report on that copy. The PDFs in IN are only read, never moved or renamed.
+A file is taken once it has not been written to for --settle seconds (5), so a
+copy still arriving waits, and once only: OUT/.preflight-watch.json records
+each by name, size and modification time, so a replaced file is taken again
+(its new fixed copy gets the next free name). OUT/log.txt has a line per file;
+a file that cannot be read or fixed is an ERROR line and the others carry on.
+--once takes what is ready and stops (for a scheduled run). The job's settings
+reach both the checks and the fixes.
+
+Not done: gradients in reduce-ink. Measured first: no CMYK gradient in the
+samples goes over 300% (the catalogue's peak at exactly 300%; the X-am
+posters' gradients are not CMYK), so they stay listed, not changed.
+
+On the samples folder with `--fix knock-out-white --once`: 14 files in 76 s,
+14 reports, one fixed copy (the catalogue); the samples' checksums unchanged.
+
 ## Fixes on many files at once (added 2026-11-23)
 
 `preflight fix NAME|@list a.pdf b.pdf folder/ --out-dir FOLDER` runs the same

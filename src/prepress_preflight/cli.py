@@ -30,6 +30,9 @@ def main(argv=None) -> int:
     if argv[:1] == ["actions"]:
         from .actions import main as actions_main
         return actions_main(argv[1:])
+    if argv[:1] == ["watch"]:
+        from .watch import main as watch_main
+        return watch_main(argv[1:])
     if argv[:1] == ["jobs"]:
         from .jobs import main as jobs_main
         return jobs_main(argv[1:])
