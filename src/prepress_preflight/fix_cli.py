@@ -147,6 +147,14 @@ def main(argv) -> int:
     parser.add_argument("--yes", action="store_true", help="confirm without being asked (for scripts)")
     add_step_options(parser)
     parser.add_argument("--no-preview", action="store_true", help="skip running preflight before and after")
+    parser.add_argument("--job", metavar="NAME", help="use a saved job's --trim, --min-bleed, --bound and --ink-limit "
+                                                     "(see: preflight jobs); options typed as well win")
+    from .jobs import expand
+    try:
+        argv, _ = expand(list(argv), step_only=True)
+    except ValueError as exc:
+        print(f"preflight fix: {exc}", file=sys.stderr)
+        return 2
     args = parser.parse_args(argv)
 
     try:

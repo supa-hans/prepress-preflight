@@ -1081,6 +1081,25 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Job settings (added 2026-11-23)
+
+The values still waiting on the owner (press limits, the safe margin per
+product, bleed) are per kind of job, so they now have somewhere to live:
+`preflight jobs save coated -- --ink-limit 320 --safe-margin 3` keeps them
+under a name, and `--job coated` uses them on preflight, preflight report,
+preflight app and preflight fix. A job is a text file in
+~/.config/prepress-preflight/jobs/ (or PREFLIGHT_JOBS) holding the options as
+typed, checked when saved (a typo is refused, not saved). The job's options
+go first, so anything typed as well wins. A fix takes only the options a fix
+step knows (--trim, --min-bleed, --bound, --ink-limit), so
+`preflight fix reduce-ink file.pdf --job coated` takes the press limit from
+the job. The text output starts with "Job settings: NAME" and the HTML report
+lists it.
+
+Found on the way: the app had no check options at all (always the defaults);
+`preflight app` now takes them, and `--job`. No jobs are made yet: they wait
+for the owner's numbers.
+
 ## Reduce total ink (added 2026-11-23)
 
 `reduce-ink --ink-limit 300` brings colours over the press's total ink limit

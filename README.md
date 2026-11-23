@@ -82,6 +82,9 @@ preflight fix scale flyer.pdf --trim 148x210 --write flyer-a5.pdf    # scale A4 
 preflight fix trim-from-marks+add-marks banner.pdf --clip-to-bleed --write press.pdf   # several fixes in one go
 preflight actions save canva-press "add-bleed --clip-to-bleed --marks"   # save a chain under a name
 preflight fix @canva-press canva.pdf --write canva-press.pdf          # and run it
+preflight jobs save coated -- --ink-limit 320 --safe-margin 3      # job settings under a name
+preflight flyer.pdf --job coated                                     # use them (also report, app, fix)
+preflight fix reduce-ink posters.pdf --job coated --write posters-320.pdf   # press limit from the job
 preflight fix rename-spot job.pdf --spot "Pantone 185C=PANTONE 185 C" --write job-spots.pdf
 preflight fix spot-to-cmyk catalogue.pdf --write catalogue-cmyk.pdf  # spots to CMYK
 preflight fix rgb-to-cmyk yearbook.pdf --write yearbook-cmyk.pdf    # RGB to CMYK (FOGRA39)

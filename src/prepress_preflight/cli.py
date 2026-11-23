@@ -13,6 +13,7 @@ import sys
 from . import __version__
 from .engine import run
 from .cli_common import add_check_options, options_from
+from .jobs import expand as expand_job
 from .report import render
 
 
@@ -29,6 +30,14 @@ def main(argv=None) -> int:
     if argv[:1] == ["actions"]:
         from .actions import main as actions_main
         return actions_main(argv[1:])
+    if argv[:1] == ["jobs"]:
+        from .jobs import main as jobs_main
+        return jobs_main(argv[1:])
+    try:
+        argv, job = expand_job(argv)
+    except ValueError as exc:
+        print(f"preflight: {exc}", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser(prog="preflight", description="Read-only preflight checks for print PDFs.")
     parser.add_argument("files", nargs="+", help="PDF file(s) to check")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
@@ -36,7 +45,7 @@ def main(argv=None) -> int:
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
 
-    options = options_from(args)
+    options = options_from(args, job)
     results, errors = [], 0
     for path in args.files:
         try:
@@ -48,6 +57,8 @@ def main(argv=None) -> int:
         payload = [r.to_dict() for r in results]
         print(json.dumps(payload[0] if len(args.files) == 1 and payload else payload, indent=2, ensure_ascii=False))
     else:
+        if job:
+            print(f"Job settings: {job}")
         print("\n".join(render(r) for r in results), end="")
     if errors:
         return 2
@@ -90,8 +101,13 @@ def report_main(argv) -> int:
                         help="several files: a new folder for the reports and the summary (default: "
                              "'preflight reports <date time>' beside the first input)")
     add_check_options(parser)
+    try:
+        argv, job = expand_job(argv)
+    except ValueError as exc:
+        print(f"preflight report: {exc}", file=sys.stderr)
+        return 2
     args = parser.parse_args(argv)
-    options = options_from(args)
+    options = options_from(args, job)
     files = _pdfs(args.inputs)
     if not files:
         print("preflight report: no PDF files found", file=sys.stderr)

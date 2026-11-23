@@ -14,6 +14,8 @@ def parse_trim(text: str) -> tuple[float, float]:
 
 def add_check_options(parser) -> None:
     """The options that change what the checks measure. Shared by `preflight` and `preflight report`."""
+    parser.add_argument("--job", metavar="NAME",
+                        help="use a saved job's settings (see: preflight jobs); options typed as well win")
     parser.add_argument("--trim", type=parse_trim, metavar="WxH", help="expected trim size in mm, e.g. 90x55")
     parser.add_argument("--min-bleed", type=float, default=3.0, metavar="MM", help="minimum bleed (default 3)")
     parser.add_argument("--safe-margin", type=float, default=1.5, metavar="MM",
@@ -26,10 +28,10 @@ def add_check_options(parser) -> None:
                         help="bound job: spine edges need no bleed (page 1 is a right-hand page)")
 
 
-def options_from(args):
+def options_from(args, job=None):
     from .checks import Options
     return Options(expected_trim_mm=args.trim, min_bleed_mm=args.min_bleed, bound=args.bound,
-                   ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin, cmyk_only=args.cmyk_only)
+                   ink_limit_pct=args.ink_limit, safe_margin_mm=args.safe_margin, cmyk_only=args.cmyk_only, job=job)
 
 
 def add_step_options(parser) -> None:

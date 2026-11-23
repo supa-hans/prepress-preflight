@@ -26,6 +26,7 @@ class Options:
     bound: bool = False
     safe_margin_mm: float = 1.5
     cmyk_only: bool = False  # the job prints in process colours only
+    job: str | None = None  # the saved job settings these came from, if any (see jobs.py)
 
 
 class Check:

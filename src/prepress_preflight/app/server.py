@@ -681,11 +681,20 @@ def main(argv) -> int:
     parser.add_argument("--browser", action="store_true",
                         help="use the web browser even if the native window is available")
     parser.add_argument("--key", help=argparse.SUPPRESS)  # fixed key, for development only
+    from ..cli_common import add_check_options, options_from
+    from ..jobs import expand
+    add_check_options(parser)
+    try:
+        argv, job = expand(list(argv))
+    except ValueError as exc:
+        print(f"preflight app: {exc}", file=sys.stderr)
+        return 2
     args = parser.parse_args(argv)
     from .window import available, run_window
     native = available() and not args.browser and not args.no_browser
     try:
-        server, url, session = serve(args.file, args.port, not (args.no_browser or native), key=args.key)
+        server, url, session = serve(args.file, args.port, not (args.no_browser or native),
+                                     options=options_from(args, job), key=args.key)
     except ValueError as exc:
         print(f"preflight app: {exc}", file=sys.stderr)
         return 2

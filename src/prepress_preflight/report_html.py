@@ -172,6 +172,8 @@ def build_html(result, options=None, now: datetime.datetime | None = None) -> st
             counts.append(f"{n} {label}{'s' if n != 1 and sev != UNCHECKED else ''}")
 
     facts = [("Pages", result.page_count), ("Trim size", _size_text(result.geometry))]
+    if options is not None and getattr(options, "job", None):
+        facts.append(("Job settings", options.job))
     if options is not None:
         facts.append(("Checked for", f"{options.min_bleed_mm:g} mm bleed, {options.safe_margin_mm:g} mm safe margin, "
                                      f"{options.ink_limit_pct:g}% total ink"
