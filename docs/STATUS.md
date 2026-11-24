@@ -5,6 +5,8 @@
 | Check | Severity | Rule |
 | --- | --- | --- |
 | Page size | warn | Pages differ from each other, or from the job spec (`--trim`), by more than 0.5 mm |
+| Blank pages | note | A page with no printing ink inside the trim (marks outside, white, invisible text and non-printing spots do not count). Often deliberate, e.g. an inside cover |
+| Blank pages | warn | Every page is blank |
 | Bleed box | fail | Under 3 mm, or the page ends at the trim, on an edge where artwork reaches the trim |
 | Bleed box | note | As above, but no artwork reaches those edges: a white edge needs no bleed |
 | Bleed box | warn | No bleed box defined but the page extends past the trim |
@@ -1085,6 +1087,24 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## Blank pages (added 2026-11-24)
+
+A page where no printing plate carries ink inside the trim. In a booklet that
+is often deliberate (an inside cover, a notes page), so it is a note; a file
+where every page is blank is a warning, since something went wrong in the
+export (artwork on a hidden layer, set to white or to a non-printing spot).
+Crop marks and slugs outside the trim, white objects, invisible text and
+dielines do not count. Pages are screened on their objects first; only a page
+with no inked object is rendered (36 dpi, on the separated plates) to confirm,
+so the check costs nothing measurable on the samples. A page that cannot be
+rendered is "could not check".
+
+On the samples only the yearbook has one: page 2, the inside front cover. It
+holds two shapes, white or outside the trim, and renders as paper. No status
+changed. Three older tests used a page holding only a white object; they now
+also draw some ink, as the new check rightly warns about a file with nothing
+printing.
 
 ## Reversed small text (added 2026-11-24)
 

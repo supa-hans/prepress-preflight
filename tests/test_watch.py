@@ -11,7 +11,7 @@ from prepress_preflight.cli import main
 from prepress_preflight.watch import Watcher
 
 GS = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
-WHITE_OP = b"/GS0 gs 0 0 0 0 k 120 120 20 20 re f"
+WHITE_OP = b"0 0 0 1 k 160 160 20 20 re f /GS0 gs 0 0 0 0 k 120 120 20 20 re f"  # some ink, so the page is not blank
 
 
 def drop(make, folder, name, content=WHITE_OP, **kw):

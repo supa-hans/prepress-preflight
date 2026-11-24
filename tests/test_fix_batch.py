@@ -8,7 +8,7 @@ from prepress_preflight.cli import main
 from prepress_preflight.content import walk_page
 
 GS = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
-WHITE_OP = b"/GS0 gs 0 0 0 0 k 120 120 20 20 re f"
+WHITE_OP = b"0 0 0 1 k 160 160 20 20 re f /GS0 gs 0 0 0 0 k 120 120 20 20 re f"  # some ink, so the page is not blank
 
 
 def digest(path):
@@ -32,7 +32,7 @@ def test_a_folder_is_fixed_into_a_new_folder(make, tmp_path, capsys):
     assert "same     b.pdf: no change" in text and "ERROR    broken.pdf" in text
     assert sorted(os.listdir(out)) == ["a fixed.pdf"]
     with pikepdf.open(out / "a fixed.pdf") as pdf:
-        assert [e.overprint for e in walk_page(pdf.pages[0]).events] == [False]
+        assert [e.overprint for e in walk_page(pdf.pages[0]).events] == [False, False]
     assert {p.name: digest(p) for p in jobs.iterdir()} == before  # the originals untouched
 
 

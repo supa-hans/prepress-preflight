@@ -96,7 +96,7 @@ def test_white_overprint_fails(make):
 
 
 def test_white_without_overprint_is_fine(make):
-    assert run(make(b"0 0 0 0 k 100 100 50 50 re f", extgstate=OP)).status == "PASS"
+    assert run(make(b"0 0 0 1 k 40 40 20 20 re f 0 0 0 0 k 100 100 50 50 re f", extgstate=OP)).status == "PASS"
 
 
 def test_black_overprint_is_fine(make):
