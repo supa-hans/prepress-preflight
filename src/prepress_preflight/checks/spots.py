@@ -85,6 +85,7 @@ class SpotColourCheck(Check):
 
     id = "spots"
     name = "Spot colours"
+    sees_hidden = True  # a hidden object's spot or font still goes to the RIP
 
     def __init__(self, doc, options):
         super().__init__(doc, options)

@@ -88,8 +88,9 @@ def _check_pages(path: str, options: Options, names: tuple | None):
             infer_trim(page, content, options.size_tolerance_mm)
             for text in content.problems:
                 problems.setdefault(text, set()).add(page.number)
+            visible = content.visible()
             for check in checks:
-                check.page(page, content if check.needs_content else None)
+                check.page(page, (content if check.sees_hidden else visible) if check.needs_content else None)
         found = {check.name: check.finish() for check in checks}
         geometry = [{"page": p.number, "media": p.media.as_list(), "trim": p.trim.as_list(), "bleed": p.bleed.as_list(),
                      "has_trim": p.has_trim, "has_bleed": p.has_bleed, "trim_inferred": p.trim_inferred,

@@ -33,6 +33,9 @@ class Check:
     id = "check"
     name = "Check"
     needs_content = True  # set False for checks that only read page boxes or render
+    # Objects wholly clipped away do not print, so checks are not shown them;
+    # a check about what the file holds (spots defined, fonts needed) sees all.
+    sees_hidden = False
 
     def __init__(self, doc: Document, options: Options):
         self.doc = doc

@@ -1090,6 +1090,41 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Clipping applied (added 2026-11-25)
+
+Until now an object counted where it was drawn, even when a clipping path
+hid it. The content walker now tracks the clip (W / W* paths, and each form's
+bounding box) as a box in page space. An object wholly outside it is marked
+hidden: kept in the walker's output, so objects are numbered as before for
+the inspector and the fixes, but not shown to the checks, the crop-mark
+finder or the inspector's "objects under a point". A partly clipped object's
+position is cut to the clip. Spot colours and Font embedding still see
+hidden objects, since the RIP still receives their spot and font.
+
+Text positions are a one-em box at the start of a run (no font metrics), so
+for the hidden test a run is stretched along its baseline to one em per byte,
+the most it could reach: a run starting outside a clip that may reach into it
+is still judged.
+
+Verified on the samples before relying on it: on catalogue pages 48, 4 and 20,
+deleting every object the walker calls hidden (2,116 on page 48) from an
+in-memory copy changes no rendered pixel.
+
+Effect on the samples (no status changed):
+
+- Catalogue: white overprint on page 48 is 7 text objects, not 14 (the other
+  7 are clipped away; the fail stands on the visible ones); rich-black small
+  text on pages 48 and 49 is 162 objects, not 245; small text in three inks
+  on page 4 is 36, not 47; black overprint on page 5 is 2 lines, not 3;
+  a hidden object under 100% opacity on page 3 is no longer listed.
+- Little Stars: 49 fewer RGB vector objects (clipped-away illustration
+  fragments).
+- Elsewhere only highlight boxes changed: clipped images now outline the part
+  that shows.
+
+The knock-out-white fix still knocks out every white overprint object in the
+file, hidden or not, as agreed (whole-file knock-out).
+
 ## Page count of bound jobs (added 2026-11-24)
 
 With `--bound`, the Page size check also judges the page count. Every leaf

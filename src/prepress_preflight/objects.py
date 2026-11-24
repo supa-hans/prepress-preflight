@@ -100,6 +100,8 @@ def objects_at(pdf_page, mu_page, x: float, y: float, tolerance: float = 2.0, co
     hits = []
     for number in range(len(content.events) - 1, -1, -1):  # painted last = on top
         e = content.events[number]
+        if e.hidden:
+            continue  # clipped away: nothing of it is under the point
         for b in e.boxes():
             if b[0] - tolerance <= pt.x <= b[2] + tolerance and b[1] - tolerance <= pt.y <= b[3] + tolerance:
                 hits.append(describe(e, to_view) | {"id": number})

@@ -16,7 +16,7 @@ def _lines(content):
     """
     horizontal, vertical = set(), set()
     for e in content.events:
-        if e.paint != "stroke" or e.bbox is None or not e.cs.is_registration:
+        if e.paint != "stroke" or e.bbox is None or e.hidden or not e.cs.is_registration:
             continue
         if e.colour is not None and len(e.colour) and max(e.colour) <= 0.001:
             continue  # the white keyline drawn under each mark

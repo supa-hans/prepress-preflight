@@ -7,8 +7,10 @@ approximate position. Checks consume these events; nothing here writes to the
 file.
 
 Known limits, stated so no check claims more than it knows:
-  * Clipping paths are not applied. An object's position is where it is drawn,
-    not what remains visible after clipping.
+  * Clipping is applied by bounding box: an object's position is cut to the
+    clipping region's box, and an object wholly outside it is marked hidden.
+    The clip's shape is not followed (an object inside the box but outside a
+    curved clip still counts), nor is clipping by text (render modes 4-7).
   * Text positions are approximate (no font metrics are read).
   * Optional content (layers) visibility is ignored; hidden layers are walked.
   * Blend-mode objects inside pattern cells or knockout groups are only
@@ -25,6 +27,46 @@ import pikepdf
 IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 PROCESS_NAMES = {"Cyan", "Magenta", "Yellow", "Black"}
 MAX_DEPTH = 12
+
+
+def intersect(a, b):
+    """The overlap of two boxes (None means unbounded); an empty overlap is a zero-size box."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    x0, y0, x1, y1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+    return (x0, y0, max(x0, x1), max(y0, y1))
+
+
+def _disjoint(a, b, grow=0.0) -> bool:
+    return a[0] - grow > b[2] or a[2] + grow < b[0] or a[1] - grow > b[3] or a[3] + grow < b[1]
+
+
+def _clip(event, clip, reach=None):
+    """Apply the clipping region to an event's position: cut its box to the clip, or mark it hidden."""
+    event.clip = clip
+    if clip is None or event.bbox is None:
+        return
+    grow = (event.width or 0.0) / 2 + 0.01  # a stroke reaches half its width past the path
+    if _disjoint(reach or event.bbox, clip, grow):
+        event.hidden = True
+        return
+    if _disjoint(event.bbox, clip, grow):
+        return  # text whose first em is outside but whose run may reach in: position left as drawn
+    event.bbox = intersect(event.bbox, (clip[0] - grow, clip[1] - grow, clip[2] + grow, clip[3] + grow))
+    if event.parts:
+        parts = [intersect(p, clip) for p in event.parts if not _disjoint(p, clip, grow)]
+        event.parts = parts if len(parts) > 1 else None
+
+
+def _text_bytes(operand) -> int:
+    if isinstance(operand, pikepdf.Array):
+        return sum(len(bytes(x)) for x in operand if isinstance(x, pikepdf.String))
+    try:
+        return len(bytes(operand))
+    except Exception:
+        return 1
 
 
 def mat_mul(m, n):
@@ -70,7 +112,7 @@ class Event:
     """One painted object."""
 
     __slots__ = ("kind", "paint", "cs", "colour", "bbox", "overprint", "opm", "px", "ppi", "parts", "loc", "width",
-                 "font", "blend", "groups", "ref", "size", "opacity", "smask", "alpha")
+                 "font", "blend", "groups", "ref", "size", "opacity", "smask", "alpha", "clip", "hidden")
 
     def __init__(self, kind, paint, cs, colour, bbox, overprint, opm, px=None, ppi=None, parts=None, loc=None,
                  width=None, font=None, blend="Normal", groups=(), ref=None):
@@ -102,6 +144,10 @@ class Event:
         self.opacity = 1.0  # constant opacity in force for this side (ca for fill, CA for stroke)
         self.smask = False  # a soft mask in force (from the graphics state)
         self.alpha = False  # images only: the image carries its own soft mask (an alpha channel)
+        self.clip = None  # bounding box of the clipping region in force (page points), None when unclipped
+        # Wholly outside the clipping region: it does not print. Kept, so that
+        # objects are numbered the same everywhere, but checks are not shown it.
+        self.hidden = False
 
     def boxes(self):
         """Bounding boxes to test for position: one per shape when known."""
@@ -162,10 +208,18 @@ class PageContent:
         # Fonts used to show visible text, keyed by object identity.
         self.fonts: dict = {}
 
+    def visible(self) -> "PageContent":
+        """The same page without objects wholly clipped away (see Event.hidden)."""
+        out = PageContent.__new__(PageContent)
+        out.__dict__.update(self.__dict__)
+        out.events = [e for e in self.events if not e.hidden]
+        return out
+
 
 class _State:
     __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm", "bm", "lw", "font",
-                 "tm", "tlm", "fsize", "leading", "tr", "fdef", "sdef", "gs_names", "smask", "ca", "CA")
+                 "tm", "tlm", "fsize", "leading", "tr", "fdef", "sdef", "gs_names", "smask", "ca", "CA",
+                 "clip")
 
     def __init__(self):
         self.ctm = IDENTITY
@@ -192,6 +246,9 @@ class _State:
         self.gs_names = ()
         self.smask = False
         self.ca = self.CA = 1.0
+        # The clipping region's bounding box in page space, or None for no clip.
+        # A box, not the clip's shape: an object outside it is certainly hidden.
+        self.clip = None
 
     def copy(self):
         s = _State.__new__(_State)
@@ -304,7 +361,7 @@ class PageWalker:
 
     # ---- events --------------------------------------------------------
     def _emit(self, kind, paint, st, bbox, resources, located, px=None, ppi=None, cs=None, colour=None, parts=None, ref=None,
-              alpha=False):
+              alpha=False, reach=None):
         if cs is None:
             cs, colour, pat = (st.fcs, st.fcol, st.fpat) if paint == "fill" else (st.scs, st.scol, st.spat)
             if cs.kind == "pattern":
@@ -328,6 +385,7 @@ class PageWalker:
             a, b, c, d = mat_mul(st.tm, st.ctm)[:4]
             event.size = st.fsize * math.sqrt(abs(a * d - b * c))
         event.alpha = alpha
+        _clip(event, st.clip, reach)
         self._append(event, st, resources)
 
     def _append(self, event, st, resources):
@@ -395,6 +453,7 @@ class PageWalker:
     def _interpret(self, instructions, resources, st, depth, located):
         stack = []
         subs: list = []  # current path as a list of subpaths; points already in page space
+        pending_clip = None  # W or W* seen: the path clips once it has been painted (or ended with n)
 
         def box_of(points):
             xs = [p[0] for p in points]
@@ -452,8 +511,14 @@ class PageWalker:
                         self._emit("path", "stroke", st, bb, resources, located, parts=parts)
                     self._blend_end(mark)
                     subs = []
+                    if pending_clip is not None:
+                        st.clip, pending_clip = intersect(st.clip, pending_clip), None
                 elif op == "n":
                     subs = []
+                    if pending_clip is not None:
+                        st.clip, pending_clip = intersect(st.clip, pending_clip), None
+                elif op in ("W", "W*"):
+                    pending_clip = path_bbox() or (0.0, 0.0, 0.0, 0.0)  # an empty path clips everything away
                 # --- colour
                 elif op == "g":
                     st.fcs, st.fcol, st.fpat, st.fdef = GRAY, _nums(operands), None, None
@@ -558,6 +623,7 @@ class PageWalker:
                     mark = self._blend_begin(st, depth, idx, "shading", None, located)
                     self._append(Event("shading", "fill", cs, None, None, st.op_fill, st.opm, loc=self._loc(st, located),
                                        blend=st.bm, groups=tuple((f.name, f.blend) for f in self._chain)), st, resources)
+                    self.out.events[-1].clip = st.clip
                     self._blend_end(mark)
                 elif op == "INLINE IMAGE":
                     mark = self._blend_begin(st, depth, idx, "image", self._image_geometry(st, 1, 1)[0], located)
@@ -581,10 +647,15 @@ class PageWalker:
         m = mat_mul(st.tm, st.ctm)
         corners = [mat_apply(m, x, y) for x, y in ((0, -0.2 * fs), (fs, -0.2 * fs), (fs, 0.8 * fs), (0, 0.8 * fs))]
         bbox = (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
+        # Where the run could reach, for deciding whether a clip hides it: at
+        # most one em per byte along the baseline (real glyphs are narrower).
+        length = fs * max(1, _text_bytes(operand))
+        far = [mat_apply(m, x, y) for x, y in ((0, -0.2 * fs), (length, -0.2 * fs), (length, 0.8 * fs), (0, 0.8 * fs))]
+        reach = (min(c[0] for c in far), min(c[1] for c in far), max(c[0] for c in far), max(c[1] for c in far))
         if st.tr in (0, 2, 4, 6):
-            self._emit("text", "fill", st, bbox, resources, located)
+            self._emit("text", "fill", st, bbox, resources, located, reach=reach)
         if st.tr in (1, 2, 5, 6):
-            self._emit("text", "stroke", st, bbox, resources, located)
+            self._emit("text", "stroke", st, bbox, resources, located, reach=reach)
 
     def _image_geometry(self, st, w, h):
         corners = [mat_apply(st.ctm, x, y) for x, y in ((0, 0), (1, 0), (1, 1), (0, 1))]
@@ -653,6 +724,11 @@ class PageWalker:
                 mv = _nums(m)
                 if len(mv) == 6:
                     sub.ctm = mat_mul(mv, st.ctm)
+            fb = _nums(xobj.get("/BBox", []))
+            if len(fb) == 4:  # a form is clipped to its bounding box
+                corners = [mat_apply(sub.ctm, x, y) for x, y in ((fb[0], fb[1]), (fb[2], fb[1]), (fb[2], fb[3]), (fb[0], fb[3]))]
+                sub.clip = intersect(sub.clip, (min(c[0] for c in corners), min(c[1] for c in corners),
+                                                max(c[0] for c in corners), max(c[1] for c in corners)))
             self._active.add(key)
             self._chain.append(frame)
             self._knockout += frame.knockout
