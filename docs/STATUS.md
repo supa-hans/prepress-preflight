@@ -14,8 +14,9 @@
 | Black overprint | note | 100% black (C0 M0 Y0 K100 or a Black separation) text up to 12 pt or line up to 2 pt that knocks out, or overprints in mode 0 (which overprints nothing in CMYK). The overprint-black fix uses the same rules |
 | Small text inks | warn | Text up to 8 pt as placed in rich black (K 85% or more with any C, M or Y at 10% or more): it should be K only |
 | Small text inks | note | Other text up to 8 pt in three or more inks (10% or more each); may be a deliberate brand colour |
-| Reversed small text | warn | White text up to 7 pt as placed, knocked out of two or more printing plates at 30% or more each (measured on the separations, spots included) |
-| Reversed small text | note | The same from 7 up to 10 pt |
+| Reversed text and lines | warn | White text up to 7 pt as placed, knocked out of two or more printing plates at 30% or more each, together on at least 40% of the text's box (measured on the separations, spots included) |
+| Reversed text and lines | note | The same from 7 up to 10 pt |
+| Reversed text and lines | warn | A white stroked line under 0.5 pt as placed, out of two or more inks as above. A white stroke outlining a white-filled shape is not a line |
 | Registration inside trim | fail | Always. Outside the trim is fine |
 | Blend modes | note | Listed quietly; common in print files |
 | Transparency | note | Objects under 100% opacity (and invisible ones at 0%), under a soft mask, or images with an alpha channel. Listed, never judged: it depends on the RIP, and PDF/X-1a allows none |
@@ -1092,8 +1093,7 @@ of two or more inks, the gap has to line up on each plate, so misregistration
 pushes one ink into the letters and fine strokes fill in; on one ink there is
 nothing to misregister. The check measures the background on the separated
 plates (so overprint and spot inks count as they print, non-printing spots
-do not), as the 90th percentile of each plate inside the text's box, since
-the letters themselves are bare paper. Thresholds, chosen from the samples
+do not). Thresholds, chosen from the samples
 (owner left the call to Claude): warn up to 7 pt as placed, note from 7 to
 10 pt, an ink counting at 30% or more. Font weight is not judged.
 
@@ -1109,6 +1109,37 @@ by eye: white sans on a two-ink blue) are a warning, and 129 runs at 7.4 to
 posters' small white text all sits on one ink or paper. No status changed
 (the catalogue already fails). No fix: the remedies (larger or bolder type, a
 one-ink background, or a stroke of the background colour) are design changes.
+
+### Thin white lines, and inks that must be together (added 2026-11-24)
+
+The check is now "Reversed text and lines": a white stroked line under
+0.5 pt as placed, out of two or more inks, is a warning for the same reason
+as small white text. Thin coloured lines stay with the Hairlines check, which
+leaves white ones out. A line's box is widened by 1.5 pt each side so the
+background around it is measured.
+
+The first run showed the background measure was wrong. Taking each plate's
+90th percentile separately over the box counted inks that sit side by side:
+the zebra on Little Stars page 8 has black stripes beside a cyan-black sky,
+and the box around a seam read as "C65 K100" although no point carried both.
+The rule is now that two or more plates at 30% must be together at the same
+point over at least 40% of the box, and the background reported is the median
+of those points. White letters cover well under half their box, so text over
+a solid two-ink panel still passes the 40%; the catalogue's findings are
+unchanged.
+
+Strokes that outline a white-filled shape are left out (the stroke's box
+matches a white fill's within 0.6 pt, which is how Illustrator draws a
+filled and stroked path). Such a stroke is the edge of a white area: filling
+in trims the shape slightly and leaves no line to lose. This removed every
+Wobblers hit (two white dots, 0.27 pt outline, on M100 Y63), the eye whites on
+Little Stars page 30, and 61 zebra outlines on page 8. Small white *shapes*
+are not judged.
+
+Left on the samples: four loose 0.03 pt white lines on the Little Stars zebra
+over the C65 K34 sky (page 8). They are real lines out of two inks, as thin as
+the Canva hairlines that check already reports on this file, so they stay a
+warning. No status changed.
 
 ## Remove private data (added 2026-11-24)
 

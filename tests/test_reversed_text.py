@@ -16,7 +16,7 @@ def page(make, background: bytes, size: float, extra=b"", **kw):
 
 
 def found(path):
-    return [(f.severity, f.message) for f in run(path).findings if f.check == "Reversed small text"]
+    return [(f.severity, f.message) for f in run(path).findings if f.check == "Reversed text and lines"]
 
 
 def test_six_point_white_out_of_two_inks_warns(make):
@@ -64,3 +64,35 @@ def test_a_non_printing_spot_does_not_count(make):
     gs = {"/GS0": pikepdf.Dictionary(OP=True, op=True, OPM=1), "/GS1": pikepdf.Dictionary(OP=False, op=False)}
     bg = b"1 0 0 0 k 60 60 240 60 re f /GS0 gs /Die cs 1 scn"
     assert found(page(make, bg, 6, extra=b"/GS1 gs ", colorspace={"/Die": die}, extgstate=gs)) == []
+
+
+def line(make, background: bytes, width: float, colour=b"0 0 0 0 K", **kw):
+    content = background + b" 60 60 240 60 re f " + colour + f" {width} w 70 90 m 290 90 l S".encode()
+    return make(content, **kw)
+
+
+def test_a_thin_white_line_out_of_two_inks_warns(make):
+    got = found(line(make, b"1 0.7 0 0 k", 0.3))
+    assert got == [(WARN, "White lines under 0.5 pt knocked out of two or more inks: 1 line(s), thinnest 0.30 pt, "
+                          "mostly out of C100 M70. Misregistration can fill them in")]
+
+
+def test_a_half_point_white_line_or_one_ink_is_fine(make):
+    assert found(line(make, b"1 0.7 0 0 k", 0.5)) == []
+    assert found(line(make, b"0 0 0 1 k", 0.3, name="one.pdf")) == []
+
+
+def test_a_thin_coloured_line_is_left_to_hairlines(make):
+    assert found(line(make, b"1 0.7 0 0 k", 0.2, colour=b"0 0 1 0 K")) == []
+
+
+def test_two_single_inks_side_by_side_do_not_count(make):
+    # cyan on the left, black on the right: each point is one ink, so nothing has to register
+    side_by_side = b"1 0 0 0 k 60 60 120 60 re f 0 0 0 1 k 180 60 120 60 re f 0 0 0 0 k 0 0 0 0 K"
+    assert found(make(side_by_side + b" 0.3 w 70 90 m 290 90 l S")) == []
+
+
+def test_a_white_stroke_around_a_white_shape_is_an_edge_not_a_line(make):
+    # a white dot filled and stroked (B): the stroke only widens the dot
+    dot = b"1 0.7 0 0 k 60 60 240 60 re f 0 0 0 0 k 0 0 0 0 K 0.3 w 100 85 4 4 re B"
+    assert found(make(dot)) == []
