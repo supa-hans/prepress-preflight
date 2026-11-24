@@ -50,6 +50,8 @@ class PageSizeCheck(Check):
             self.add(NOTE, "Trim size inferred from the crop marks, not taken from the file's trim box", self.inferred)
         if self.no_trim:
             self.add(NOTE, "No trim box defined; the full page size is treated as the trim", self.no_trim)
+        if self.options.bound:
+            self._page_count(len(self.sizes))
         exp = self.options.expected_trim_mm
         if exp:
             for size, pages in groups.items():
@@ -59,3 +61,13 @@ class PageSizeCheck(Check):
                 extra = " (matches if rotated)" if rotated else ""
                 self.add(WARN, f"Trim size {_fmt(size)} does not match the expected {_fmt(exp)}{extra}", pages)
         return self.findings
+
+    def _page_count(self, n: int):
+        """A bound job: every leaf has two sides, and saddle stitching folds sheets into fours."""
+        if n % 2:
+            self.add(WARN, f"{n} pages: a bound job has an even number of pages (two to every leaf). A page is "
+                           "missing or extra, or the file holds a single cover page")
+        elif n % 4:
+            self.add(NOTE, f"{n} pages: not a multiple of 4. Saddle stitching needs one, so {4 - n % 4} blank pages "
+                           "would be added, unless the cover is a separate file; perfect binding only needs an even "
+                           "count")

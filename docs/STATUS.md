@@ -5,6 +5,8 @@
 | Check | Severity | Rule |
 | --- | --- | --- |
 | Page size | warn | Pages differ from each other, or from the job spec (`--trim`), by more than 0.5 mm |
+| Page size | warn | Bound job (`--bound`) with an odd page count |
+| Page size | note | Bound job with an even count that is not a multiple of 4 (saddle stitching would add blanks; perfect binding is fine) |
 | Blank pages | note | A page with no printing ink inside the trim (marks outside, white, invisible text and non-printing spots do not count). Often deliberate, e.g. an inside cover |
 | Blank pages | warn | Every page is blank |
 | Bleed box | fail | Under 3 mm, or the page ends at the trim, on an edge where artwork reaches the trim |
@@ -1087,6 +1089,18 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## Page count of bound jobs (added 2026-11-24)
+
+With `--bound`, the Page size check also judges the page count. Every leaf
+has two sides, so an odd count warns: a page is missing or extra, or a single
+cover page is in the file. An even count that is not a multiple of 4 is a
+note: saddle stitching folds sheets into fours and would add blank pages,
+while perfect binding needs only an even count (the check cannot tell which
+binding). It lives in Page size rather than a check of its own so that an
+unbound job never shows a page-count "pass" that was not checked. The two
+bound samples pass: the yearbook (68) and the catalogue (56). Files supplied
+as spreads are counted as they are.
 
 ## Blank pages (added 2026-11-24)
 

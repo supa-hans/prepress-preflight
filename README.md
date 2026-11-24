@@ -139,7 +139,7 @@ before.
 
 | Check | Severity | Rule |
 | --- | --- | --- |
-| Page size | warn | Reports the trim size. Warns when pages differ from each other or from `--trim` (tolerance 0.5 mm). |
+| Page size | warn | Reports the trim size. Warns when pages differ from each other or from `--trim` (tolerance 0.5 mm). With `--bound`, warns on an odd page count and notes one that is not a multiple of 4. |
 | Blank pages | note / warn | A page with nothing printing inside the trim is a note (often a deliberate inside cover); every page blank warns. |
 | Bleed box | fail / warn / note | Fails when the bleed box is under 3 mm, or the page ends at the trim, on an edge where artwork reaches the trim. Only a note when those edges are white: a white edge needs no bleed. Warns when no bleed box is defined but the page extends past the trim. |
 | Bleed artwork | fail | Wherever artwork reaches the trim (ink of 5% or more within 0.5 mm), ink must carry on 3 mm past it. Catches clipped artwork, short bleed, gaps, and bleed on some edges only. |
