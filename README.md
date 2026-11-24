@@ -36,6 +36,10 @@ preflight *.pdf                       # several files
 
 Exit code: `0` no fails, `1` at least one fail, `2` a file could not be read.
 
+Files of 8 MB or more run their slowest checks in parallel processes (the 56-page
+catalogue sample takes 5 s instead of 18 s); the report is identical. Set
+`PREFLIGHT_WORKERS=1` to keep everything in one process.
+
 ## Reports
 
 ```sh

@@ -1467,6 +1467,30 @@ how it samples large images), so sharing renders would change bleed and margin
 measurements. No change made. Any speed-up must keep each check's pixels
 identical, or be recalibrated against the samples.
 
+### Checks in parallel (2026-11-24)
+
+The slow checks now run in their own processes on files of 8 MB or more:
+the edge strips (Bleed box, Bleed artwork, Safe margin, kept together
+because they share measurements), Blend over same ink, Total ink and Image
+detail. The rest run in the main process meanwhile. Each process opens the
+file itself and sees the same pages and pixels as before, so nothing a check
+measures changes. Every sample's full report (findings, locations and page
+boxes) was compared, one process against parallel: all 14 identical.
+
+| Sample | Before | After |
+| --- | --- | --- |
+| Catalogue (56 pp) | 18.3 s | 5.2 s |
+| Pull-up banner | 14.5 s | 7.4 s |
+| Little Stars (49 pp) | 10.3 s | 7.0 s |
+| Yearbook (68 pp) | 5.0 s | 3.3 s |
+
+Small files stay in one process (starting workers costs more than it
+saves). Peak memory on the banner is unchanged (about 5 GB in all, either
+way): one check's render dominates. Each worker handles one task and exits,
+so the app or a watched folder does not keep a big file's memory. If workers
+cannot be started the run falls back to one process with the same report.
+`PREFLIGHT_WORKERS=1` turns it off.
+
 ## Next tasks, in order
 
 1. **Banner follow-ups.** The RIP that printed the banner is not known
