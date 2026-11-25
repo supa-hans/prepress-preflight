@@ -1655,19 +1655,29 @@ cannot be started the run falls back to one process with the same report.
 
 ## Next tasks, in order
 
-1. **Banner follow-ups.** The RIP that printed the banner is not known
-   (owner, 2026-11-17), so what it did with the Multiply stays an inference.
-   Watch whether the warn level is too noisy on InDesign jobs.
-2. **Safe margin: confirm the distance.** 1.5 mm is the default; the owner may
-   want a larger one per product type.
-3. **Total ink: set the real press limit.** The area report, `--ink-limit` and
-   the reduce-ink fix are done. The owner does not have the press limits yet (2026-11-17), so the
-   default stays at 400% as a placeholder.
-4. **Compare against Acrobat and PitStop** on real jobs; investigate every
-   disagreement.
-5. Later checks: none outstanding from the original list.
-6. Later phases: a fix for the banner's Multiply fault (parked by the owner);
-   checking the two-ink gradient midpoint in Acrobat; object editing.
+Updated 2026-11-25. The work Claude can choose and verify on the samples alone
+is done for now (surveys that did not justify a rule are listed under "Looked
+at, not built"). What is left needs the owner:
+
+1. **Total ink: the real press limit.** Total ink now measures the plates as
+   they print (overprint included), and `--ink-limit` and reduce-ink are
+   ready; the default stays at a placeholder 400% until the limit is known.
+2. **Safe margin per product.** 1.5 mm is the default (it keeps the Tempest
+   label's agreed pass); books and brochures may want 3 or 5 mm.
+3. **Compare against Acrobat and PitStop** on real jobs, and investigate every
+   disagreement. The checks added since the last comparison (reversed text
+   and lines, blank pages, bound page count, CMYK profiles) have only been
+   judged on the samples.
+4. **PDF/X.** Whether the printers want PDF/X decides whether a compliance
+   check is worth building; a partial one would earn passes it should not.
+5. **Banner follow-ups.** The RIP that printed the banner is not known, so
+   what it did with the Multiply stays an inference; watch whether the warn
+   level is too noisy on InDesign jobs.
+6. **Parked by the owner:** a fix for the banner's Multiply fault; checking the
+   two-ink gradient midpoint in Acrobat.
+7. **More samples** would let the parked surveys be revisited: a file whose
+   bleed does not continue its artwork, near-black small text, bitmap Type 3
+   fonts, and real thin filled rules.
 
 ## Interface model (for later)
 
