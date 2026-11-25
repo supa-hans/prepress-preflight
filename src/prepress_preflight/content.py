@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pikepdf
 
@@ -154,6 +154,9 @@ class ColourSpace:
     kind: str  # gray | rgb | cmyk | lab | sep | pattern | unknown
     names: tuple = ()  # colourant names for sep (Separation / DeviceN)
     indexed: bool = False
+    # The embedded ICC profile (its object number, generation) when the space is
+    # ICC-based. Not part of equality: tagged CMYK is still CMYK to every check.
+    profile: tuple | None = field(default=None, compare=False)
 
     @property
     def is_registration(self) -> bool:
@@ -416,10 +419,12 @@ class PageWalker:
                 head = str(obj[0])
                 if head == "/ICCBased":
                     n = int(obj[1].get("/N", 0))
-                    return {1: GRAY, 3: RGB, 4: CMYK}.get(n, UNKNOWN)
+                    if n == 4:
+                        return ColourSpace("cmyk", profile=obj[1].objgen if obj[1].is_indirect else (0, 0))
+                    return {1: GRAY, 3: RGB}.get(n, UNKNOWN)
                 if head == "/Indexed":
                     base = self.resolve_cs(obj[1], resources, depth + 1)
-                    return ColourSpace(base.kind, base.names, True)
+                    return ColourSpace(base.kind, base.names, True, base.profile)
                 if head == "/Separation":
                     return ColourSpace("sep", (str(obj[1])[1:],))
                 if head == "/DeviceN":

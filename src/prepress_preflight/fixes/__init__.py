@@ -28,6 +28,7 @@ from .spot_to_cmyk import propose_spot_to_cmyk, write_spot_to_cmyk
 from .set_boxes import propose_set_boxes, write_set_boxes
 from .thicken_hairlines import propose_thicken_hairlines, write_thicken_hairlines
 from .trim_from_marks import propose_trim_from_marks, write_trim_from_marks
+from .untag_cmyk import propose_untag_cmyk, write_untag_cmyk
 
 FIXES = {
     "trim-from-marks": (propose_trim_from_marks, write_trim_from_marks),
@@ -52,6 +53,7 @@ FIXES = {
     "downsample-images": (propose_downsample_images, write_downsample_images),
     "remove-layer": (propose_remove_layer, write_remove_layer),
     "remove-private-data": (propose_remove_private_data, write_remove_private_data),
+    "untag-cmyk": (propose_untag_cmyk, write_untag_cmyk),
     "remove-object": (propose_remove_object, write_remove_object),
     "recolour-object": (propose_recolour_object, write_recolour_object),
 }

@@ -13,7 +13,7 @@ import os
 import shutil
 from dataclasses import dataclass
 
-from .append import AppendError, _same_prefix, syntax_problems
+from .append import AppendError, _same_prefix, new_problems
 
 
 @dataclass
@@ -72,7 +72,7 @@ def deliver(original: str, final: str, dst: str, compact: bool = False) -> None:
         raise AppendError("the new file must not be the input file")
     if not _same_prefix(original, final, os.path.getsize(original)):
         raise AppendError("verification failed: the original bytes were not preserved through the chain")
-    new = sorted(syntax_problems(final) - syntax_problems(original))
+    new = new_problems(final, original)
     if new:
         raise AppendError("verification failed: the result has structural problems: " + "; ".join(new[:3]))
     tmp = dst + ".partial"
@@ -116,7 +116,7 @@ def verify_compact(full: str, compact: str) -> None:
 
     from ..content import walk_page
 
-    new = sorted(syntax_problems(compact) - syntax_problems(full))
+    new = new_problems(compact, full)
     if new:
         raise AppendError("verification failed: the compact file has structural problems: " + "; ".join(new[:3]))
     with pikepdf.open(full) as a, pikepdf.open(compact) as b:

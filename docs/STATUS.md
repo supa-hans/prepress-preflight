@@ -14,6 +14,7 @@
 | Bleed box | warn | No bleed box defined but the page extends past the trim |
 | Bleed artwork | fail | Artwork reaches the trim (ink within 0.5 mm of it) and does not carry on 3 mm past it |
 | RGB | warn | Any RGB object. Common in print files; never a fail |
+| CMYK profiles | note | CMYK tagged with an embedded ICC profile (named). Whether it is converted depends on the RIP |
 | White overprint | fail | Always |
 | Black overprint | note | 100% black (C0 M0 Y0 K100 or a Black separation) text up to 12 pt or line up to 2 pt that knocks out, or overprints in mode 0 (which overprints nothing in CMYK). The overprint-black fix uses the same rules |
 | Small text inks | warn | Text up to 8 pt as placed in rich black (K 85% or more with any C, M or Y at 10% or more): it should be K only |
@@ -1089,6 +1090,52 @@ registration-to-black, which also gains device-colour restores (it used to
 refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
+
+## CMYK profiles and untag-cmyk (added 2026-11-25)
+
+CMYK tagged with an embedded ICC profile (ICCBased, four components) tells a
+colour-managing RIP which press the numbers were made for; a RIP managing
+colour converts them to its own press profile when the two differ, and a
+K-only black can then print in four inks. The walker treated tagged CMYK as
+plain CMYK, so nothing reported it. Colour spaces now carry their profile
+(ignored when comparing, so every check still treats tagged CMYK as CMYK),
+and a new note names each profile and what uses it. It is a note because
+conversion depends on the RIP's settings.
+
+On the samples only the X-am posters are tagged: all their artwork (4,138
+vector objects, 435 image uses, 274 text objects) is in "U.S. Web Coated
+(SWOP) v2", a US press profile, so a RIP targeting FOGRA39 would convert it.
+The Wobblers hold one tagged space, used only as a DeviceN process
+definition, not to paint: not reported, not changed.
+
+The untag-cmyk fix replaces the tag with DeviceCMYK wherever a colour space is
+named for painting: resource colour spaces (pages, forms, patterns, fonts,
+annotation appearances), images, gradients and indexed palettes. It leaves
+spot colours' alternates, DeviceN process definitions, transparency groups and
+the output intent. Verified by rendering every page's separated plates before
+and after: they must be identical. On the X-am posters: 143 colour spaces and
+42 images untagged, plates identical, and the only change in the report is
+that the note is gone.
+
+Found on the way: the X-am posters already carry zlib warnings ("input stream
+is complete") on some images. A fix that rewrites such an image's dictionary
+copies its data byte for byte, so the same warning appears again at the new
+offset, and the append verifier, which compared warnings with their offsets,
+refused the write. Structure problems are now counted by message with the
+offset ignored: a problem is new only if it occurs more often than in the
+original. The original bytes and every rewritten stream's data are still
+proved unchanged separately.
+
+### Looked at, not built (2026-11-25)
+
+- Small text in a near-black tint (K90-99, which screens into dots): no
+  sample has any; the catalogue's small grey text is a deliberate K50.
+- Type 3 fonts: Little Stars has 50 (Canva), but all 1,541 glyphs are vector
+  outlines, not bitmaps; they print like any font.
+- Thin filled shapes (outlined strokes) for Hairlines: few on the samples,
+  some covered by artwork painted later (which the check cannot see), and 76
+  of the catalogue's are zero-width, whose printing depends on the RIP's scan
+  conversion. Too noisy to judge without knowing what is painted on top.
 
 ## Total ink on the separated plates (added 2026-11-25)
 

@@ -588,3 +588,17 @@ def test_images_over_450_ppi_suggest_downsampling(app, make):
     report = wait_report(app(make(b"q 72 0 0 72 60 60 cm /Im0 Do Q", xobject={"/Im0": image})))["report"]
     got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "Image resolution"]
     assert got == [["downsample-images"]]
+
+
+def test_tagged_cmyk_suggests_untagging(app, make):
+    import pikepdf
+
+    def cs(pdf):
+        return pikepdf.Array([pikepdf.Name.ICCBased, pdf.make_stream(b"x", N=4, Alternate=pikepdf.Name.DeviceCMYK)])
+    path = make(b"/CS0 cs 0 0 0 1 scn 60 60 40 40 re f")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        pdf.pages[0].resources["/ColorSpace"] = pikepdf.Dictionary({"/CS0": cs(pdf)})
+        pdf.save(path)
+    report = wait_report(app(path))["report"]
+    got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "CMYK profiles"]
+    assert got == [["untag-cmyk"]]

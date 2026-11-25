@@ -5,6 +5,7 @@ from .bleed import BleedBoxCheck
 from .bleed_artwork import BleedArtworkCheck
 from .safe_margin import SafeMarginCheck
 from .rgb import RGBCheck
+from .cmyk_profiles import CmykProfileCheck
 from .white_overprint import WhiteOverprintCheck
 from .black_overprint import BlackOverprintCheck
 from .small_text_inks import SmallTextInksCheck
@@ -34,6 +35,7 @@ ALL_CHECKS = [
     BleedArtworkCheck,
     SafeMarginCheck,
     RGBCheck,
+    CmykProfileCheck,
     WhiteOverprintCheck,
     BlackOverprintCheck,
     SmallTextInksCheck,

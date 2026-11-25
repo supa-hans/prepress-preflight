@@ -14,9 +14,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 
 import pikepdf
 
@@ -44,6 +46,22 @@ def syntax_problems(path) -> set:
     if done.returncode != 0:
         raise AppendError(f"verification failed: the structure check could not run ({done.stderr.strip()[-300:]})")
     return {p.replace(os.fspath(path), "FILE") for p in json.loads(done.stdout.strip().splitlines()[-1])}
+
+
+def new_problems(after, before) -> list[str]:
+    """Structure problems in `after` that `before` does not have, counted by message.
+
+    The byte offset in a message is ignored: a stream rewritten in an update
+    (its dictionary changed, its data copied byte for byte) moves to a new
+    offset and repeats any warning its data already had, such as a zlib
+    stream with trailing bytes. A message is new only when it occurs more
+    often than before. (That data and every unchanged byte are the same is
+    proved separately.)
+    """
+    def counted(path):
+        return Counter(re.sub(r"\(offset \d+\)", "(offset …)", p) for p in syntax_problems(path))
+    extra = counted(after) - counted(before)
+    return sorted(extra.elements())
 
 
 def _startxref(path) -> int:
@@ -186,7 +204,7 @@ def verify_append(src, dst, original_size, changes, additions=None) -> None:
         # Only problems the update introduced count: many real files already
         # carry warnings (damaged streams, stale linearisation hints), and the
         # update neither causes nor can cure those.
-        new = sorted(syntax_problems(dst) - syntax_problems(src))
+        new = new_problems(dst, src)
         if new:
             raise AppendError("verification failed: the new file has structural problems: " + "; ".join(new[:3]))
         # unparse(resolved=True) prints an object's own contents (references inside

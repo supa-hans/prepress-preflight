@@ -45,6 +45,8 @@
       fields: [["max-text", "Text up to (pt)", "number", "8"]] },
     "overprint-black": { help: "Sets small 100% black (K100) text and thin black lines to overprint, so misregistration cannot show a halo around them. Large black is left knocking out, so photos do not show through it.",
       fields: [["max-text", "Text up to (pt)", "number", "12"], ["max-line", "Lines up to (pt)", "number", "2"]] },
+    "untag-cmyk": { help: "Removes the ICC profile tag from CMYK artwork, so a colour-managing RIP prints the numbers as they are instead of converting them to its own press (which can turn a K-only black into four inks). Every CMYK value stays exactly the same.",
+      fields: [] },
     "remove-private-data": { help: "Removes the editing copy Illustrator (and a marker InDesign) keeps inside its PDFs. Nothing in it prints; on Illustrator files it is often most of the file. Afterwards Illustrator opens the PDF as plain objects, not the original artwork. Export compact to see the saving.",
       fields: [] },
     "downsample-images": { help: "Brings images placed at far more resolution than the press can use down to a sensible one, so the file is smaller and RIPs faster. Judged by each image's largest placement. Large format seen from a distance: try over 200 to 150 ppi.",
