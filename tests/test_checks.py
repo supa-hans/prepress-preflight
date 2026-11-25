@@ -299,3 +299,14 @@ def test_page_list():
 def test_text_report_mentions_result(make):
     text = render(run(make(b"1 0 0 rg 100 100 50 50 re f")))
     assert "Result: WARN" in text and "RGB" in text
+
+
+def test_black_overprinting_a_rich_colour_adds_to_its_ink(make):
+    # C100 M100 Y100 panel, black on top set to overprint: the press lays down 400% there
+    gs = {"/GS1": pikepdf.Dictionary(OP=True, op=True, OPM=1)}
+    content = b"1 1 1 0 k 100 100 60 60 re f /GS1 gs 0 0 0 1 k 110 110 40 40 re f"
+    result = run(make(content, extgstate=gs), Options(ink_limit_pct=320))
+    assert "Highest total ink coverage: 400%" in found(result, "Total ink", NOTE)[0].message
+    knocked_out = run(make(b"1 1 1 0 k 100 100 60 60 re f 0 0 0 1 k 110 110 40 40 re f", name="ko.pdf"),
+                      Options(ink_limit_pct=320))
+    assert "Highest total ink coverage: 300%" in found(knocked_out, "Total ink", NOTE)[0].message

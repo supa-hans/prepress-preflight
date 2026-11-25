@@ -4,6 +4,7 @@ import numpy as np
 import pymupdf
 
 from ..edges import printing_page
+from ..plates import page_inks, render_channels
 from ..model import FAIL, NOTE, UNCHECKED
 from .base import Check
 from ..document import device_matrix
@@ -31,9 +32,11 @@ class TotalInkCheck(Check):
     rendered pixel showing it, so each vector and text object's own CMYK colour
     is checked as well, whatever its size.
 
-    Limits: printing spot colours are counted through their CMYK equivalents,
-    RGB objects through a simple conversion, and overprint is not simulated.
-    Non-printing spot colours (recognised by name) are left out. Registration
+    Measured on the separated plates, as the press prints: total ink is the sum
+    of every printing plate, process and spot, and overprint is honoured (black
+    set to overprint a rich colour adds to it rather than replacing it).
+    Non-printing spot colours (recognised by name) are left out. Limits: RGB
+    objects count through the renderer's simple conversion. Registration
     colour is handled by its own check.
     """
 
@@ -58,20 +61,25 @@ class TotalInkCheck(Check):
                 if self._is_over(pct) and (e.bbox is None or page.trim.intersects(e.bbox)):
                     self.objects.append((page.number, pct))
         try:
-            mu_page, _ = printing_page(self.doc, page, content)
+            mu_page, _ = printing_page(self.doc, page, content)  # dielines and the like taken out, once
             to_mu = device_matrix(mu_page)
             clip = (pymupdf.Rect(page.trim.as_list()) * to_mu).normalize()
             area_in2 = max((clip.width / 72.0) * (clip.height / 72.0), 1e-6)
             dpi = int(min(72, max(18, (MAX_PIXELS / area_in2) ** 0.5)))
-            pix = mu_page.get_pixmap(colorspace=pymupdf.csCMYK, dpi=dpi, clip=clip, alpha=False, annots=False)
-            if pix.n != 4:
-                raise ValueError("renderer did not return CMYK")
-            data = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 4)
+            # Every plate as it prints: overprint honoured (black overprinting a
+            # rich colour adds to it), spot inks on their own plates.
+            names, plates = render_channels(mu_page, dpi / 72)
+            printing = {i.name for i in page_inks(mu_page) if i.printing}
+            keep = [i for i, n in enumerate(names) if n in printing]
+            sx, sy = plates.shape[1] / mu_page.rect.width, plates.shape[0] / mu_page.rect.height
+            x0, y0 = max(0, int(clip.x0 * sx)), max(0, int(clip.y0 * sy))
+            x1, y1 = min(plates.shape[1], int(np.ceil(clip.x1 * sx))), min(plates.shape[0], int(np.ceil(clip.y1 * sy)))
+            data = plates[y0:y1, x0:x1][:, :, keep]
             coverage = data.sum(axis=2, dtype=np.int32) / 2.55
         except Exception as exc:  # never report a pass that was not earned
             self.add(UNCHECKED, f"Ink coverage could not be measured ({type(exc).__name__})", [page.number])
             return
-        px_mm2 = (25.4 / dpi) ** 2  # the renderer already applies the page's UserUnit
+        px_mm2 = (25.4 / 72) ** 2 / (sx * sy)  # the renderer already applies the page's UserUnit
         peak = float(coverage.max()) if coverage.size else 0.0
         if peak > self.peak + 0.5:
             self.peak, self.peak_pages = peak, [page.number]
@@ -82,9 +90,8 @@ class TotalInkCheck(Check):
         over_mm2 = float(mask.sum()) * px_mm2
         if over_mm2 >= MIN_AREA_MM2:
             rows, cols = np.where(mask)
-            scale = 72.0 / dpi
-            hit = pymupdf.Rect((pix.x + cols.min()) * scale, (pix.y + rows.min()) * scale,
-                               (pix.x + cols.max() + 1) * scale, (pix.y + rows.max() + 1) * scale)
+            hit = pymupdf.Rect((x0 + cols.min()) / sx, (y0 + rows.min()) / sy,
+                               (x0 + cols.max() + 1) / sx, (y0 + rows.max() + 1) / sy)
             hit = (hit * ~to_mu).normalize()
             self.over.append((page.number, peak, over_mm2, [hit.x0, hit.y0, hit.x1, hit.y1]))
 

@@ -1090,6 +1090,22 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Total ink on the separated plates (added 2026-11-25)
+
+Total ink rendered a plain CMYK picture, where overprint is not simulated:
+black set to overprint C75 M68 Y67 really prints 310% but read as 100%, a pass
+not earned (and the overprint-black fix makes such places on purpose). It now
+renders the separated plates, as the Separations view and the reversed-text
+check do, where MuPDF honours overprint, and total ink is the sum of every
+printing plate: process and spot, the usual definition of total area
+coverage. Non-printing objects are still taken out first (a dieline knocking
+out the artwork beneath does not hide its ink: the Dielines check reports the
+knockout).
+
+Effect on the samples: only the bag label changed, its peak from 136% to
+100%. It prints two spots that do not overlap; 136% was PANTONE 534 C's CMYK
+equivalent, but a solid spot is one ink at 100%. No status changed.
+
 ## Text measured from glyph widths (added 2026-11-25)
 
 A text object's position was a one-em box where its run started, and the text

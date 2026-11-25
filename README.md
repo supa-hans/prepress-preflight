@@ -186,9 +186,9 @@ has not earned.
   are read). Fonts without a widths table (some standard fonts) and two-byte
   fonts with an encoding other than Identity-H fall back to a one-em box where
   the run starts.
-- **Total ink** is measured on a rendered page. Overprint is not simulated,
-  printing spot colours count through their CMYK equivalents, and RGB objects
-  through a simple conversion. Non-printing spots are left out. Registration
+- **Total ink** is measured on the separated plates: the sum of every printing
+  plate, process and spot, with overprint honoured. Non-printing spots are
+  left out, and RGB objects count through a simple conversion. Registration
   colour is covered by its own check.
 - **Hairlines** measures stroked lines only, not thin filled shapes.
 - **Safe margin** sees outlined type only on a white edge, not over a
