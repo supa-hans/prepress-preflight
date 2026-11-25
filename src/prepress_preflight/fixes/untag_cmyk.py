@@ -146,11 +146,25 @@ def _survey(pdf):
 def _find_cs_dicts(pdf) -> set:
     """Object numbers of indirect dictionaries referenced as a /ColorSpace resource dictionary."""
     out = set()
+
+    def look(d):
+        """A dictionary and everything written inside it (not following references)."""
+        for key in d.keys():
+            if key in SKIP_KEYS:
+                continue
+            v = d[key]
+            if key == "/ColorSpace" and isinstance(v, pikepdf.Dictionary) and not isinstance(v, pikepdf.Stream):
+                if v.is_indirect:
+                    out.add(v.objgen)
+                continue
+            if isinstance(v, pikepdf.Dictionary) and not isinstance(v, pikepdf.Stream) and not v.is_indirect:
+                look(v)  # e.g. a page's own /Resources
+
     for obj in pdf.objects:
-        if isinstance(obj, pikepdf.Dictionary) and not isinstance(obj, pikepdf.Stream):
-            cs = obj.get("/ColorSpace")
-            if isinstance(cs, pikepdf.Dictionary) and not isinstance(cs, pikepdf.Stream) and cs.is_indirect:
-                out.add(cs.objgen)
+        if isinstance(obj, pikepdf.Stream):
+            look(obj.stream_dict)
+        elif isinstance(obj, pikepdf.Dictionary):
+            look(obj)
     return out
 
 

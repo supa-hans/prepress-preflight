@@ -78,3 +78,9 @@ def test_fixes_leave_objects_that_are_clipped_away(make, tmp_path):
     write(p, dst)
     colours = [e.colour for e in events(dst) if e.kind == "text"]
     assert colours == [(0.0, 0.0, 0.0, 1.0), (0.75, 0.68, 0.67, 0.9)]
+
+
+def test_shapes_clipped_away_leave_the_box(make):
+    # one path, two squares; the clip keeps only the left one
+    e = events(make(b"q 50 50 40 40 re W n 0 0 0 1 k 60 60 10 10 re 120 60 10 10 re f Q"))[0]
+    assert [round(v) for v in e.bbox] == [60, 60, 70, 70]

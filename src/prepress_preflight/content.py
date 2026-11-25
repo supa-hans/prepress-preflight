@@ -59,6 +59,9 @@ def _clip(event, clip, reach=None):
     event.bbox = intersect(event.bbox, (clip[0] - grow, clip[1] - grow, clip[2] + grow, clip[3] + grow))
     if event.parts:
         parts = [intersect(p, clip) for p in event.parts if not _disjoint(p, clip, grow)]
+        if parts:  # the box covers only the shapes left showing
+            shown = (min(p[0] for p in parts), min(p[1] for p in parts), max(p[2] for p in parts), max(p[3] for p in parts))
+            event.bbox = intersect(event.bbox, (shown[0] - grow, shown[1] - grow, shown[2] + grow, shown[3] + grow))
         event.parts = parts if len(parts) > 1 else None
 
 

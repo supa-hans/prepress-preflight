@@ -108,3 +108,15 @@ def test_a_write_that_changes_the_plates_is_refused(make, tmp_path, monkeypatch)
     monkeypatch.setattr(untag_cmyk, "_survey", wrong)
     with pytest.raises(AppendError, match="plates do not render the same"):
         write(p, str(tmp_path / "out.pdf"))
+
+
+def test_a_shared_colour_space_dictionary_inside_page_resources(make, tmp_path):
+    # Resources written inside the page, pointing at one indirect /ColorSpace dictionary (shared between pages)
+    path = make(b"/CS0 cs 0 0 0 1 scn 60 60 40 40 re f")
+    with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        spaces = pdf.make_indirect(pikepdf.Dictionary({"/CS0": pikepdf.Array([pikepdf.Name.ICCBased, icc(pdf)])}))
+        pdf.pages[0].obj["/Resources"] = pikepdf.Dictionary(ColorSpace=spaces)
+        pdf.save(path)
+    dst = str(tmp_path / "out.pdf")
+    write(propose(path), dst)
+    assert notes(dst) == []
