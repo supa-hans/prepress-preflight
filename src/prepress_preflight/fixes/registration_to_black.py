@@ -26,7 +26,7 @@ from ..checks.white_overprint import LABELS
 from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, checked_pages, find_spots, recolour, write_plan
+from .bracket import count_text, note_hidden, Plan, checked_pages, find_spots, recolour, write_plan
 
 NAME = "registration-to-black"
 
@@ -63,7 +63,7 @@ def _analyse(pdf, trims) -> Plan:
         return True
 
     for spot in find_spots(pdf, _registration, flag, plan, every_use=True,
-                           elsewhere="in a form that is also used outside the trim"):
+                           elsewhere="in a form that is also used outside the trim", skip_hidden=True):
         sides = {s.event.paint: (0, 0, 0, _tint(s.event)) for _, s in spot.flagged}
         if not recolour(plan, spot, sides, lambda e: LABELS[e.kind]):
             plan.leave(spot, "in a form whose uses disagree on colour")
@@ -72,7 +72,7 @@ def _analyse(pdf, trims) -> Plan:
 
 
 def _count_text(counter) -> str:
-    return ", ".join(f"{n} {label}" for label, n in counter.most_common())
+    return count_text(counter)
 
 
 def propose_registration_to_black(path: str, options: Options | None = None, **_) -> Proposal:
@@ -85,6 +85,7 @@ def propose_registration_to_black(path: str, options: Options | None = None, **_
     for page in sorted(plan.fixed):
         proposal.reasons.append((page, f"Makes registration inside the trim black at the same tint: "
                                        f"{_count_text(plan.fixed[page])}. Marks outside the trim stay registration."))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} registration object(s) inside the trim left as they are: {reason}"))

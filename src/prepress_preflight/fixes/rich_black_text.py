@@ -26,7 +26,7 @@ from ..checks.small_text_inks import SMALL_TEXT_PT, is_rich_black
 from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, find_spots, recolour, write_plan
+from .bracket import count_text, note_hidden, Plan, find_spots, recolour, write_plan
 
 NAME = "rich-black-text"
 K100 = (0.0, 0.0, 0.0, 1.0)
@@ -44,7 +44,7 @@ def _target(e, max_text) -> bool:
 def _analyse(pdf, max_text) -> Plan:
     plan = Plan()
     for spot in find_spots(pdf, _candidate, lambda n, s: _target(s.event, max_text), plan, every_use=True,
-                           elsewhere="in a form that is also painted larger"):
+                           elsewhere="in a form that is also painted larger", skip_hidden=True):
         sides = {s.event.paint: K100 for _, s in spot.flagged}
         if not recolour(plan, spot, sides, lambda e: "text object(s)" if e.paint == "fill" else "outlined text object(s)"):
             plan.leave(spot, "in a form whose uses disagree on colour")
@@ -66,9 +66,10 @@ def propose_rich_black_text(path: str, options: Options | None = None, max_text=
     with pikepdf.open(path) as pdf:
         plan = _analyse(pdf, max_text)
     for page in sorted(plan.fixed):
-        detail = ", ".join(f"{n} {label}" for label, n in plan.fixed[page].most_common())
+        detail = count_text(plan.fixed[page])
         proposal.reasons.append((page, f"Makes small rich-black text (up to {max_text:g} pt) K100 only: {detail}. "
                                        "One plate instead of four, so it prints sharp whatever the registration."))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} small rich-black text object(s) left as they are: {reason}"))

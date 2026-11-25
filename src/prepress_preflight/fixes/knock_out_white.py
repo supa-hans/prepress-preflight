@@ -29,7 +29,7 @@ from ..checks.white_overprint import LABELS, is_white
 from ..content import walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import PATH_PAINT, Plan, add_edit, find_spots, ins, known, write_plan
+from .bracket import count_text, note_hidden, PATH_PAINT, Plan, add_edit, find_spots, ins, known, write_plan
 
 NAME = "knock-out-white"
 FILL_AND_STROKE = {"B", "B*", "b", "b*"}
@@ -77,7 +77,7 @@ def _analyse(pdf) -> Plan:
 
 
 def _count_text(counter) -> str:
-    return ", ".join(f"{n} {label}" for label, n in counter.most_common())
+    return count_text(counter)
 
 
 def propose_knock_out_white(path: str, options: Options | None = None, **_) -> Proposal:
@@ -88,6 +88,7 @@ def propose_knock_out_white(path: str, options: Options | None = None, **_) -> P
     for page in sorted(plan.fixed):
         proposal.reasons.append((page, f"Knocks out white set to overprint: {_count_text(plan.fixed[page])}. "
                                        "They will now print white over what is beneath them."))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} white object(s) set to overprint left as they are: {reason}"))

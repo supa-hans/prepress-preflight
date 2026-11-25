@@ -50,7 +50,7 @@ from ..checks.base import Options
 from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, find_spots, known, recolour, write_plan
+from .bracket import count_text, note_hidden, Plan, find_spots, known, recolour, write_plan
 from .rgb_to_cmyk import ADOBE_INVERTED, _is_jpeg, jpeg_quality
 
 NAME = "reduce-ink"
@@ -292,7 +292,7 @@ def propose_reduce_ink(path: str, options: Options | None = None, ink_limit=None
         for reason, n in images_left[page].items():
             proposal.skipped.append((page, f"{n} {reason} left as they are"))
     for page in sorted(plan.fixed):
-        detail = ", ".join(f"{n} {label}" for label, n in plan.fixed[page].most_common())
+        detail = count_text(plan.fixed[page])
         proposal.reasons.append((page, f"Brings colours over {limit:g}% total ink down to it: {detail}."))
     if colours:
         top = ", ".join(f"{_percent(old)} ({sum(old) * 100:.0f}%) to {_percent(new)} ({sum(new) * 100:.0f}%) x{n}"
@@ -300,6 +300,7 @@ def propose_reduce_ink(path: str, options: Options | None = None, ink_limit=None
         first = min(plan.fixed)
         proposal.reasons.append((first, f"Colours changed (most used first): {top}"
                                         + (f", and {len(colours) - 5} more" if len(colours) > 5 else "") + "."))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} object(s) over the limit left as they are: {reason}"))

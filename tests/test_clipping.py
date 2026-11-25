@@ -61,3 +61,20 @@ def test_a_hidden_spot_is_still_listed(make):
 def test_a_short_run_that_cannot_reach_the_clip_is_hidden(make):
     text = b"q 100 40 100 100 re W n /GS1 gs 0 0 0 0 k BT /F1 10 Tf 60 80 Td (w) Tj ET Q"
     assert not white_op_fails(make(INK + text, extgstate=OP, font={"/F1": helvetica}))
+
+
+def test_fixes_leave_objects_that_are_clipped_away(make, tmp_path):
+    from prepress_preflight.fixes import FIXES
+    propose, write = FIXES["rich-black-text"]
+    rich = b"0.75 0.68 0.67 0.9 k BT /F1 6 Tf "
+    shown = rich + b"60 80 Td (a) Tj ET "
+    clipped = b"q 40 40 10 10 re W n " + rich + b"150 100 Td (b) Tj ET Q"
+    src = make(INK + shown + clipped, font={"/F1": helvetica})
+    p = propose(src)
+    assert p.reasons == [(1, "Makes small rich-black text (up to 8 pt) K100 only: 1 text object(s). "
+                             "One plate instead of four, so it prints sharp whatever the registration.")]
+    assert p.skipped == [(1, "1 small rich-black text object(s) left as they are: clipped away, so it does not print")]
+    dst = str(tmp_path / "out.pdf")
+    write(p, dst)
+    colours = [e.colour for e in events(dst) if e.kind == "text"]
+    assert colours == [(0.0, 0.0, 0.0, 1.0), (0.75, 0.68, 0.67, 0.9)]

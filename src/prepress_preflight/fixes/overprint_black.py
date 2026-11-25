@@ -37,7 +37,7 @@ from ..checks.white_overprint import LABELS
 from ..content import CMYK, walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, add_edit, find_spots, ins, known, write_plan
+from .bracket import count_text, note_hidden, Plan, add_edit, find_spots, ins, known, write_plan
 
 NAME = "overprint-black"
 FILL_AND_STROKE = {"B", "B*", "b", "b*"}
@@ -69,7 +69,7 @@ def _analyse(pdf, max_text, max_line) -> Plan:
         return True
 
     for spot in find_spots(pdf, _candidate, flag, plan, every_use=True,
-                           elsewhere="in a form that is also painted where it is not small black"):
+                           elsewhere="in a form that is also painted where it is not small black", skip_hidden=True):
         sides = {s.event.paint for _, s in spot.flagged}
         fill_on, stroke_on = "fill" in sides, "stroke" in sides
         state = known(spot, lambda s: (s.state.op_fill, s.state.op_stroke, s.state.opm))
@@ -95,7 +95,7 @@ def _analyse(pdf, max_text, max_line) -> Plan:
                  lambda add_gs, v=back: [ins("gs", pikepdf.Name(add_gs(v)))],
                  lambda e: NAMES[(e.kind, e.paint)])
         for n, s in spot.flagged:  # a copy off the page (artwork spread over two pages) changes nothing printed
-            if s.event.bbox is not None and not _on_media(s.event.bbox, media[n]):
+            if s.event.bbox is not None and not s.event.hidden and not _on_media(s.event.bbox, media[n]):
                 label = NAMES[(s.event.kind, s.event.paint)]
                 plan.fixed[n][label] -= 1
                 plan.fixed[n][label + OFF] += 1
@@ -115,7 +115,7 @@ def _limits(max_text, max_line):
 
 
 def _count_text(counter: Counter) -> str:
-    return ", ".join(f"{n} {label}" for label, n in counter.most_common())
+    return count_text(counter)
 
 
 def propose_overprint_black(path: str, options: Options | None = None, max_text=None, max_line=None,
@@ -135,6 +135,7 @@ def propose_overprint_black(path: str, options: Options | None = None, max_text=
             text += (f" Also {_count_text(off)} off the page, in artwork placed on another page too, changed with it "
                      "(nothing printed here changes).")
         proposal.reasons.append((page, text))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} small black object(s) left knocking out: {reason}"))

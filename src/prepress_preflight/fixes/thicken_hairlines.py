@@ -35,7 +35,7 @@ from ..content import walk_page
 from ..edges import is_non_printing
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, add_edit, checked_pages, find_spots, ins, known, write_plan
+from .bracket import note_hidden, Plan, add_edit, checked_pages, find_spots, ins, known, write_plan
 from .spot_to_cmyk import _num
 
 NAME = "thicken-hairlines"
@@ -115,7 +115,7 @@ def _analyse(pdf, pages) -> Plan:
         return round(MIN_PT / scale, 6) if scale > 1e-9 else None
 
     for spot in find_spots(pdf, _line, flag, plan, every_use=True,
-                           elsewhere="in a form that is also drawn where the line is not thin"):
+                           elsewhere="in a form that is also drawn where the line is not thin", skip_hidden=True):
         if spot.flagged[0][1].event.kind == "text":
             plan.leave(spot, "outlined text (closed shapes)")
             continue
@@ -158,6 +158,7 @@ def propose_thicken_hairlines(path: str, options: Options | None = None, **_) ->
             text += (f" {short} of them are under 1 mm long, which usually means illustration detail drawn with "
                      "fine strokes: compare Before and After before keeping this.")
         proposal.reasons.append((page, text))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} thin line(s) left as they are: {reason}"))

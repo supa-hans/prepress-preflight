@@ -1122,8 +1122,19 @@ Effect on the samples (no status changed):
 - Elsewhere only highlight boxes changed: clipped images now outline the part
   that shows.
 
-The knock-out-white fix still knocks out every white overprint object in the
-file, hidden or not, as agreed (whole-file knock-out).
+Fixes that pick objects the way a check does (rich-black-text,
+overprint-black, thicken-hairlines, registration-to-black) now leave objects
+clipped away on the page, listed as "clipped away, so it does not print", so
+what they change matches what the check reported: on the catalogue,
+rich-black-text changes 84 and 78 text objects on pages 48 and 49, as the check
+counts, and leaves 266 and 97 hidden ones. Inside a form, a hidden use is
+still changed with the form (refusing it would block the uses that show), and
+the proposal says so in a separate sentence. knock-out-white, overprint-spot
+and rgb-to-cmyk still change every matching object in the file, hidden or not
+(whole-file, as agreed for white); their proposals now count the hidden ones
+apart ("Also 7 object(s) clipped away, which do not print, changed too").
+rich-black-text, overprint-black and knock-out-white were written on the
+catalogue: each verified, and each one's check no longer reports it.
 
 ## Page count of bound jobs (added 2026-11-24)
 

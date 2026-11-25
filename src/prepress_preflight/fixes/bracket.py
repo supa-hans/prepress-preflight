@@ -67,8 +67,32 @@ class Plan:
             self.left[n][reason] += 1
 
 
+HIDDEN = "clipped away, so it does not print"
+HIDDEN_USE = "clipped away, in a form"  # counted apart from what shows: see note_hidden
+HIDDEN_PAGE = "clipped away"
+
+
+def count_text(counter) -> str:
+    """'3 text object(s), 1 line(s)', most first; clipped-away objects are left to note_hidden."""
+    items = [(label, n) for label, n in counter.most_common() if n > 0 and label not in (HIDDEN_USE, HIDDEN_PAGE)]
+    return ", ".join(f"{n} {label}" for label, n in items)
+
+
+def note_hidden(proposal, plan) -> None:
+    """Say, after each page's reason, how many of the changed objects are clipped away and do not print."""
+    for i, (page, text) in enumerate(proposal.reasons):
+        in_form, on_page = plan.fixed[page][HIDDEN_USE], plan.fixed[page][HIDDEN_PAGE]
+        if in_form:
+            text += (f" Also {in_form} use(s) clipped away on this page, changed with the form they are in: "
+                     "nothing printed there changes.")
+        if on_page:
+            text += f" Also {on_page} object(s) clipped away, which do not print, changed too."
+        proposal.reasons[i] = (page, text)
+
+
 def find_spots(pdf, select, flag, plan: Plan, every_use: bool = False,
-               elsewhere: str = "in a form that is also painted where it does not apply") -> list[Spot]:
+               elsewhere: str = "in a form that is also painted where it does not apply",
+               skip_hidden: bool = False) -> list[Spot]:
     """The spots holding targets, with those that cannot be changed on their own
     recorded in `plan.left`.
 
@@ -76,6 +100,9 @@ def find_spots(pdf, select, flag, plan: Plan, every_use: bool = False,
     flag(page number, snapshot) -> bool | str: a target, not one, or why it is left.
     every_use: refuse a spot in a form unless every use of it is a target.
     elsewhere: the reason given for a form spot refused because of its other uses.
+    skip_hidden: leave targets wholly clipped away (they do not print), as the
+        checks do. Inside a form they stay targets: changing an unseen use is
+        harmless, and refusing it would block the uses that show.
     """
     positions = defaultdict(list)
     for number, page in enumerate(pdf.pages, 1):
@@ -83,6 +110,9 @@ def find_spots(pdf, select, flag, plan: Plan, every_use: bool = False,
         walker.run()
         for snap in walker.snapshots:
             verdict = flag(number, snap)
+            if skip_hidden and verdict is True and snap.event.hidden and not snap.chain:
+                plan.left[number][HIDDEN] += 1
+                continue
             if isinstance(verdict, str):
                 plan.left[number][verdict] += 1
                 continue
@@ -142,7 +172,7 @@ def add_edit(plan: Plan, spot: Spot, before, after, label) -> None:
     from ..objects import fingerprint
     for n, s in spot.flagged:
         plan.targets.append((n, s.number, fingerprint(s.event)))
-        plan.fixed[n][label(s.event)] += 1
+        plan.fixed[n][(HIDDEN_USE if spot.key[0] == "form" else HIDDEN_PAGE) if s.event.hidden else label(s.event)] += 1
 
 
 def recolour(plan: Plan, spot: Spot, new: dict, label) -> bool:

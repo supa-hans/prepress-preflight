@@ -30,7 +30,7 @@ from ..checks.dielines import is_cut_line
 from ..content import walk_page
 from .append import AppendError, append_update
 from .base import Proposal
-from .bracket import Plan, add_edit, find_spots, ins, known, write_plan
+from .bracket import count_text, note_hidden, Plan, add_edit, find_spots, ins, known, write_plan
 
 NAME = "overprint-spot"
 FILL_AND_STROKE = {"B", "B*", "b", "b*"}
@@ -122,8 +122,9 @@ def propose_overprint_spot(path: str, options: Options | None = None, spots=None
         counts = Counter(plan.fixed[page])
         names = ", ".join(sorted(seen))
         proposal.reasons.append((page, f"Sets {names} to overprint: "
-                                       + ", ".join(f"{n} {label}" for label, n in counts.most_common())
+                                       + count_text(counts)
                                        + ". The artwork beneath then prints whole instead of having the shape knocked out."))
+    note_hidden(proposal, plan)
     for page in sorted(plan.left):
         for reason, n in plan.left[page].items():
             proposal.skipped.append((page, f"{n} object(s) left knocking out: {reason}"))
