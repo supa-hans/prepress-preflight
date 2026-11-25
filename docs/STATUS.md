@@ -1136,6 +1136,22 @@ proved unchanged separately.
   some covered by artwork painted later (which the check cannot see), and 76
   of the catalogue's are zero-width, whose printing depends on the RIP's scan
   conversion. Too noisy to judge without knowing what is painted on top.
+- Bleed that does not continue the artwork (a photo stopping at the trim with
+  a flat block in the bleed, so a trimming drift shows a strip of the wrong
+  colour). Measured on every edge that bleeds: the average colour 0.25-1 mm
+  inside the trim against 0.5-2.5 mm out, in 1 mm steps along the edge. Taken
+  straight out, slanted artwork crossing the trim looks discontinuous (a
+  diagonal on catalogue page 2); allowing the bleed to match the inside up to
+  5 mm to either side, as the bleed check's slant rule does, every outer edge
+  on the samples continues. What remains is spine edges of spreads (catalogue
+  pages 8/9, 40/41, 45, 50), whose bleed holds the facing page, and which
+  `--bound` already leaves out. No real fault to calibrate against: not built.
+
+App: a fix preview's "effect on preflight" now also lists the notes a fix is
+meant to change (CMYK profiles, Black overprint, Annotations, Image
+resolution, Layers), not only fails and warnings; untag-cmyk's preview on the
+X-am posters showed "No change to fails or warnings" before and now shows the
+CMYK profiles note gone. (2026-11-25)
 
 ## Total ink on the separated plates (added 2026-11-25)
 

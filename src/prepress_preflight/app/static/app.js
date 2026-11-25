@@ -740,7 +740,7 @@
       p.effect.gone.forEach((f) => add("gone", "Gone:", `${f.check}: ${f.message}`));
       p.effect.changed.forEach((f) => add("", "Changed:", `${f.check}: ${f.after}`));
       p.effect.new.forEach((f) => add(f.severity === "note" ? "note" : "new", f.severity === "note" ? "Now:" : "New:", `${f.check}: ${f.message}`));
-      if (!p.effect.gone.length && !p.effect.changed.length && !p.effect.new.length) add("", "", "No change to fails or warnings.");
+      if (!p.effect.gone.length && !p.effect.changed.length && !p.effect.new.length) add("", "", "No change to fails, warnings or the notes this fix is about.");
       setWhich("after");
     }
   }

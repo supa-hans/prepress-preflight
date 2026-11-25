@@ -475,7 +475,10 @@ def _report(result) -> dict:
     return data
 
 
-NOTES_SHOWN = {"Spot colours", "Trim marks", "Page size"}
+# Notes a fix may be meant to change, so a preview can show it doing so (untag-cmyk,
+# overprint-black, remove-annotations, downsample-images and remove-layer act on notes).
+NOTES_SHOWN = {"Spot colours", "Trim marks", "Page size", "CMYK profiles", "Black overprint", "Annotations",
+               "Image resolution", "Layers"}
 
 
 def effect(before: dict, after: dict) -> dict:

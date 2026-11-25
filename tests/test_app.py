@@ -602,3 +602,13 @@ def test_tagged_cmyk_suggests_untagging(app, make):
     report = wait_report(app(path))["report"]
     got = [s for f, s in zip(report["findings"], report["suggestions"]) if f["check"] == "CMYK profiles"]
     assert got == [["untag-cmyk"]]
+
+
+def test_a_fix_that_clears_a_note_shows_it_gone():
+    from prepress_preflight.app.server import effect
+    note = {"check": "CMYK profiles", "severity": "note", "message": "CMYK tagged with “X”: 1 image(s)"}
+    other = {"check": "Transparency", "severity": "note", "message": "Transparency in use"}
+    before = {"status": "PASS", "findings": [note, other]}
+    after = {"status": "PASS", "findings": []}
+    got = effect(before, after)
+    assert [f["check"] for f in got["gone"]] == ["CMYK profiles"]  # a note no fix is about stays out
