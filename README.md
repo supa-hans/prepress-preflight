@@ -181,7 +181,11 @@ has not earned.
   is placed where it shows. The clip's exact shape is not followed, so an
   object inside the clip's box but outside a curved clip still counts. Spot
   colours and fonts are still listed for hidden objects: the RIP gets them.
-- **Text positions are approximate.** No font metrics are read.
+- **Text is measured from the font's glyph widths**, so a run's position covers
+  its whole length. Its height is a fixed share of the size (no glyph shapes
+  are read). Fonts without a widths table (some standard fonts) and two-byte
+  fonts with an encoding other than Identity-H fall back to a one-em box where
+  the run starts.
 - **Total ink** is measured on a rendered page. Overprint is not simulated,
   printing spot colours count through their CMYK equivalents, and RGB objects
   through a simple conversion. Non-printing spots are left out. Registration

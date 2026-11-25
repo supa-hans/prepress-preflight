@@ -11,7 +11,9 @@ Known limits, stated so no check claims more than it knows:
     clipping region's box, and an object wholly outside it is marked hidden.
     The clip's shape is not followed (an object inside the box but outside a
     curved clip still counts), nor is clipping by text (render modes 4-7).
-  * Text positions are approximate (no font metrics are read).
+  * Text runs are measured from the fonts' glyph widths (simple fonts, and
+    Identity-H two-byte fonts); their height is a fixed share of the size.
+    Fonts without widths fall back to a one-em box where the run starts.
   * Optional content (layers) visibility is ignored; hidden layers are walked.
   * Blend-mode objects inside pattern cells or knockout groups are only
     counted (`nested_blends`), not recorded individually.
@@ -58,6 +60,73 @@ def _clip(event, clip, reach=None):
     if event.parts:
         parts = [intersect(p, clip) for p in event.parts if not _disjoint(p, clip, grow)]
         event.parts = parts if len(parts) > 1 else None
+
+
+class FontMetrics:
+    """Glyph advance widths: code bytes per glyph, and width per code in text space per unit of size."""
+
+    def __init__(self, code_bytes, widths, default, scale):
+        self.code_bytes = code_bytes
+        self.widths = widths  # code -> width in glyph space
+        self.default = default
+        self.scale = scale  # glyph space to text space (1/1000, or a Type 3 font's matrix)
+
+    def width(self, code) -> float:
+        return self.widths.get(code, self.default) * self.scale
+
+
+def _font_metrics(font):
+    """The font's advance widths, or None when they cannot be read reliably (then positions fall back)."""
+    subtype = str(font.get("/Subtype"))
+    if subtype == "/Type0":
+        if str(font.get("/Encoding")) != "/Identity-H":
+            return None  # other CMaps (and vertical writing) are not decoded
+        cid = font.DescendantFonts[0]
+        widths, w = {}, cid.get("/W", [])
+        i = 0
+        while i < len(w):
+            first = int(w[i])
+            if isinstance(w[i + 1], pikepdf.Array):
+                for j, v in enumerate(w[i + 1]):
+                    widths[first + j] = float(v)
+                i += 2
+            else:
+                last, v = int(w[i + 1]), float(w[i + 2])
+                if last - first > 70000:
+                    return None
+                for c in range(first, last + 1):
+                    widths[c] = v
+                i += 3
+        return FontMetrics(2, widths, float(cid.get("/DW", 1000)), 0.001)
+    if "/Widths" not in font or "/FirstChar" not in font:
+        return None  # the standard 14 fonts may leave widths out: not guessed
+    first = int(font.FirstChar)
+    widths = {first + i: float(v) for i, v in enumerate(font.Widths)}
+    default = float(font.get("/FontDescriptor", {}).get("/MissingWidth", 0))
+    scale = float(font.FontMatrix[0]) if subtype == "/Type3" else 0.001
+    return FontMetrics(1, widths, default, scale)
+
+
+def _advance(st, operand, metrics):
+    """How far a text-showing operand moves the text position, in unscaled text space; None when unknown."""
+    if metrics is None:
+        return None
+    total = 0.0
+    parts = list(operand) if isinstance(operand, pikepdf.Array) else [operand]
+    for part in parts:
+        if isinstance(part, pikepdf.String):
+            data = bytes(part)
+            n = metrics.code_bytes
+            for i in range(0, len(data) - n + 1, n):
+                code = int.from_bytes(data[i:i + n], "big")
+                space = st.tw if n == 1 and code == 32 else 0.0
+                total += (metrics.width(code) * st.fsize + st.tc + space) * st.th
+        else:
+            try:
+                total -= float(part) / 1000 * st.fsize * st.th
+            except (TypeError, ValueError):
+                return None
+    return total
 
 
 def _text_bytes(operand) -> int:
@@ -219,7 +288,7 @@ class PageContent:
 class _State:
     __slots__ = ("ctm", "fcs", "fcol", "fpat", "scs", "scol", "spat", "op_fill", "op_stroke", "opm", "bm", "lw", "font",
                  "tm", "tlm", "fsize", "leading", "tr", "fdef", "sdef", "gs_names", "smask", "ca", "CA",
-                 "clip")
+                 "clip", "tc", "tw", "th", "rise")
 
     def __init__(self):
         self.ctm = IDENTITY
@@ -246,6 +315,9 @@ class _State:
         self.gs_names = ()
         self.smask = False
         self.ca = self.CA = 1.0
+        self.tc = self.tw = 0.0  # character and word spacing (unscaled text space units)
+        self.th = 1.0  # horizontal scaling (Tz / 100)
+        self.rise = 0.0
         # The clipping region's bounding box in page space, or None for no clip.
         # A box, not the clip's shape: an object outside it is certainly hidden.
         self.clip = None
@@ -291,6 +363,7 @@ class PageWalker:
         self._stream = page
         self.out = PageContent()
         self._cs_cache: dict = {}
+        self._fonts: dict = {}  # font -> FontMetrics or None
         self._active: set = set()
         self._text_run: BlendObject | None = None
         self._chain: list[FormFrame] = []
@@ -592,6 +665,14 @@ class PageWalker:
                     except Exception:
                         st.font = None
                         self.out.problems["font could not be found"] += 1
+                elif op == "Tc":
+                    st.tc = float(operands[0])
+                elif op == "Tw":
+                    st.tw = float(operands[0])
+                elif op == "Tz":
+                    st.th = float(operands[0]) / 100
+                elif op == "Ts":
+                    st.rise = float(operands[0])
                 elif op == "TL":
                     st.leading = float(operands[0])
                 elif op == "Tr":
@@ -610,6 +691,8 @@ class PageWalker:
                     st.tlm = mat_mul((1, 0, 0, 1, 0, -st.leading), st.tlm)
                     st.tm = st.tlm
                 elif op in ("Tj", "TJ", "'", '"'):
+                    if op == '"':
+                        st.tw, st.tc = float(operands[0]), float(operands[1])
                     if op in ("'", '"'):
                         st.tlm = mat_mul((1, 0, 0, 1, 0, -st.leading), st.tlm)
                         st.tm = st.tlm
@@ -635,27 +718,49 @@ class PageWalker:
                 self.out.problems[f"operator '{op}' could not be interpreted"] += 1
 
     def _show_text(self, operand, st, resources, located):
+        fs = st.fsize or 1.0
+        width = _advance(st, operand, self._metrics(st.font))  # in unscaled text space, or None when unknown
         if st.tr in (3, 7):
+            if width is not None:
+                st.tm = mat_mul((1, 0, 0, 1, width, 0), st.tm)
             return
         if st.font is not None:
             key = st.font.objgen if st.font.is_indirect else id(st.font)
             self.out.fonts.setdefault(key, st.font)
-        # No font metrics are read, so the position is a one-em box at the point
-        # where this run of text starts on its line. Good enough to say which
-        # part of the page it is in; not a measured outline.
-        fs = st.fsize or 1.0
         m = mat_mul(st.tm, st.ctm)
-        corners = [mat_apply(m, x, y) for x, y in ((0, -0.2 * fs), (fs, -0.2 * fs), (fs, 0.8 * fs), (0, 0.8 * fs))]
-        bbox = (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
-        # Where the run could reach, for deciding whether a clip hides it: at
-        # most one em per byte along the baseline (real glyphs are narrower).
-        length = fs * max(1, _text_bytes(operand))
-        far = [mat_apply(m, x, y) for x, y in ((0, -0.2 * fs), (length, -0.2 * fs), (length, 0.8 * fs), (0, 0.8 * fs))]
-        reach = (min(c[0] for c in far), min(c[1] for c in far), max(c[0] for c in far), max(c[1] for c in far))
+        lo, hi = st.rise - 0.2 * fs, st.rise + 0.8 * fs  # roughly descender to cap height
+
+        def box(length):
+            corners = [mat_apply(m, x, y) for x, y in ((0, lo), (length, lo), (length, hi), (0, hi))]
+            return (min(c[0] for c in corners), min(c[1] for c in corners),
+                    max(c[0] for c in corners), max(c[1] for c in corners))
+
+        if width is not None:
+            # Measured from the font's glyph widths: the run's whole extent along
+            # its baseline (the height is a fixed share of the size: no glyph outlines are read).
+            bbox = reach = box(width if width > 0 else fs * 0.01)
+        else:
+            # No widths to read: a one-em box where the run starts, and for
+            # deciding whether a clip hides it, the most it could reach (one em per byte).
+            bbox = box(fs)
+            reach = box(fs * max(1, _text_bytes(operand)))
         if st.tr in (0, 2, 4, 6):
             self._emit("text", "fill", st, bbox, resources, located, reach=reach)
         if st.tr in (1, 2, 5, 6):
             self._emit("text", "stroke", st, bbox, resources, located, reach=reach)
+        if width is not None:
+            st.tm = mat_mul((1, 0, 0, 1, width, 0), st.tm)  # the next run starts where this one ended
+
+    def _metrics(self, font):
+        if font is None:
+            return None
+        key = font.objgen if font.is_indirect and font.objgen != (0, 0) else id(font)
+        if key not in self._fonts:
+            try:
+                self._fonts[key] = _font_metrics(font)
+            except Exception:
+                self._fonts[key] = None
+        return self._fonts[key]
 
     def _image_geometry(self, st, w, h):
         corners = [mat_apply(st.ctm, x, y) for x, y in ((0, 0), (1, 0), (1, 1), (0, 1))]

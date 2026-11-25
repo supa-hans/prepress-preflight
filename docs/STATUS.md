@@ -1090,6 +1090,29 @@ refuse them). Verified against every object in the file. Catalogue: 525 text
 objects on 2 pages, written and verified in 2.7 s; afterwards the warnings
 are gone and the 9 notes remain. The app suggests the fix for the warning.
 
+## Text measured from glyph widths (added 2026-11-25)
+
+A text object's position was a one-em box where its run started, and the text
+position did not move on after a run, so the inspector could not find a run
+by its later letters and the reversed-text check sampled only its first
+letter. Runs are now measured from the font's advance widths (/Widths for
+simple and Type 3 fonts, /W and /DW for Identity-H two-byte fonts), with
+character and word spacing, horizontal scaling, rise and TJ adjustments, and
+the next run starts where the last ended. The height is still a fixed share of
+the size. Fonts without a widths table, and other two-byte encodings, keep the
+old one-em box (and the clipping test keeps its one-em-per-byte reach).
+
+Checked against MuPDF's own glyph positions: where a run ends agrees on all
+8,018 runs on the yearbook's first 20 pages (worst 0.14 pt); on the place
+cards the per-glyph advances are identical; elsewhere the only large
+differences are rotated text, which the horizontal comparison cannot judge,
+or a line's last glyph, where MuPDF gives a glyph box rather than an advance.
+
+Effect on the samples (no status changed): on the catalogue, one more white
+run counts as reversed (130), and one rich-black run on page 49 now falls
+wholly outside its clip (77); deleting it from a copy changes no rendered
+pixel. Elsewhere only highlight boxes changed (they now cover the run).
+
 ## Clipping applied (added 2026-11-25)
 
 Until now an object counted where it was drawn, even when a clipping path
